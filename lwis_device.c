@@ -1119,6 +1119,19 @@ bool lwis_i2c_dev_is_in_use(struct lwis_device *lwis_dev)
 	return false;
 }
 
+void lwis_device_info_dump(const char *name, void (*func)(struct lwis_device *))
+{
+	struct lwis_device *lwis_dev_it;
+
+	pr_info("LWIS Device Info Dump: %s\n\n", name);
+
+	mutex_lock(&core.lock);
+	list_for_each_entry (lwis_dev_it, &core.lwis_dev_list, dev_list) {
+		func(lwis_dev_it);
+	}
+	mutex_unlock(&core.lock);
+}
+
 /*
  *  lwis_base_probe: Create a device instance for each of the LWIS device.
  */
