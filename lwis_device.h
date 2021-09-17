@@ -361,4 +361,10 @@ void lwis_dev_power_seq_list_free(struct lwis_device_power_sequence_list *list);
  */
 void lwis_dev_power_seq_list_print(struct lwis_device_power_sequence_list *list);
 
+/*
+ * lwis_device_info_dump:
+ * Use the customized function handle to print information from each device registered in LWIS.
+ */
+void lwis_device_info_dump(const char *name, void (*func)(struct lwis_device *));
+
 #endif /* LWIS_DEVICE_H_ */
