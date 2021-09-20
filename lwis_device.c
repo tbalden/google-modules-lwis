@@ -274,11 +274,7 @@ static long lwis_ioctl(struct file *fp, unsigned int type, unsigned long param)
 		return -ENODEV;
 	}
 
-	mutex_lock(&lwis_client->lock);
-
 	ret = lwis_ioctl_handler(lwis_client, type, param);
-
-	mutex_unlock(&lwis_client->lock);
 
 	if (ret && ret != -ENOENT && ret != -ETIMEDOUT && ret != -EAGAIN) {
 		lwis_ioctl_pr_err(lwis_dev, type, ret);
@@ -301,8 +297,6 @@ static unsigned int lwis_poll(struct file *fp, poll_table *wait)
 		return POLLERR;
 	}
 
-	mutex_lock(&lwis_client->lock);
-
 	/* Add our wait queue to the poll table */
 	poll_wait(fp, &lwis_client->event_wait_queue, wait);
 
@@ -312,8 +306,6 @@ static unsigned int lwis_poll(struct file *fp, poll_table *wait)
 	} else if (lwis_client_event_peek_front(lwis_client, NULL) == 0) {
 		mask |= POLLIN;
 	}
-
-	mutex_unlock(&lwis_client->lock);
 
 	return mask;
 }
@@ -688,14 +680,6 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 		}
 	}
 
-	if (lwis_dev->irqs) {
-		ret = lwis_interrupt_request_all_default(lwis_dev->irqs);
-		if (ret) {
-			dev_err(lwis_dev->dev, "Failed to request interrupts (%d)\n", ret);
-			goto error_power_up;
-		}
-	}
-
 	if (lwis_dev->vops.device_enable) {
 		ret = lwis_dev->vops.device_enable(lwis_dev);
 		if (ret) {
@@ -952,10 +936,6 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 			dev_err(lwis_dev->dev, "Error executing device disable function\n");
 			last_error = ret;
 		}
-	}
-
-	if (lwis_dev->irqs) {
-		lwis_interrupt_free_all_default(lwis_dev->irqs);
 	}
 
 	if (lwis_dev->phys) {

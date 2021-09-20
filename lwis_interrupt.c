@@ -17,6 +17,7 @@
 
 #include "lwis_device.h"
 #include "lwis_event.h"
+#include "lwis_platform.h"
 #include "lwis_transaction.h"
 #include "lwis_util.h"
 
@@ -34,6 +35,8 @@ struct lwis_single_event_info {
 	/* Node in the lwis_interrupt->enabled_event_infos list */
 	struct list_head node_enabled;
 };
+
+static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data);
 
 struct lwis_interrupt_list *lwis_interrupt_list_alloc(struct lwis_device *lwis_dev, int count)
 {
@@ -65,13 +68,20 @@ struct lwis_interrupt_list *lwis_interrupt_list_alloc(struct lwis_device *lwis_d
 
 void lwis_interrupt_list_free(struct lwis_interrupt_list *list)
 {
-	BUG_ON(!list);
-
-	if (list->irq) {
-		kfree(list->irq);
+	int i;
+	if (!list) {
+		return;
 	}
 
-	kfree(list);
+	if (!list->irq) {
+		kfree(list);
+		return;
+	}
+
+	for (i = 0; i < list->count; ++i) {
+		free_irq(list->irq[i].irq, &list->irq[i]);
+	}
+	kfree(list->irq);
 }
 
 int lwis_interrupt_get(struct lwis_interrupt_list *list, int index, char *name,
@@ -97,6 +107,14 @@ int lwis_interrupt_get(struct lwis_interrupt_list *list, int index, char *name,
 		 list->lwis_dev->name, name);
 	list->irq[index].has_events = false;
 	list->irq[index].lwis_dev = list->lwis_dev;
+
+	request_irq(irq, lwis_interrupt_event_isr, IRQF_SHARED, list->irq[index].full_name,
+		    &list->irq[index]);
+
+	if (lwis_plaform_set_default_irq_affinity(list->irq[index].irq) != 0) {
+		dev_warn(list->lwis_dev->dev, "Interrupt %s cannot set affinity.\n",
+			 list->irq[index].full_name);
+	}
 
 	return 0;
 }
@@ -357,81 +375,6 @@ int lwis_interrupt_event_enable(struct lwis_interrupt_list *list, int64_t event_
 		spin_unlock_irqrestore(&list->irq[index].lock, flags);
 	}
 	return ret;
-}
-
-int lwis_interrupt_request_all_default(struct lwis_interrupt_list *list)
-{
-	int i;
-	int ret;
-
-	BUG_ON(!list);
-
-	for (i = 0; i < list->count; ++i) {
-		/* Register an IRQ */
-		ret = lwis_interrupt_request_by_idx(list, i, lwis_interrupt_event_isr,
-						    &list->irq[i]);
-	}
-	return 0;
-}
-
-int lwis_interrupt_request_by_idx(struct lwis_interrupt_list *list, int index,
-				  irq_handler_t handler, void *dev)
-{
-	BUG_ON(!list);
-
-	return request_irq(list->irq[index].irq, handler, IRQF_SHARED, list->irq[index].full_name,
-			   dev);
-}
-
-int lwis_interrupt_request_by_name(struct lwis_interrupt_list *list, char *name,
-				   irq_handler_t handler, void *dev)
-{
-	int i;
-
-	BUG_ON(!list);
-
-	for (i = 0; i < list->count; ++i) {
-		if (!strcmp(list->irq[i].name, name)) {
-			return lwis_interrupt_request_by_idx(list, i, handler, dev);
-		}
-	}
-
-	pr_err("Interrupt %s not found\n", name);
-	return -ENOENT;
-}
-
-void lwis_interrupt_free_all_default(struct lwis_interrupt_list *list)
-{
-	int i;
-
-	BUG_ON(!list);
-
-	for (i = 0; i < list->count; ++i) {
-		lwis_interrupt_free_by_idx(list, i, &list->irq[i]);
-	}
-}
-
-void lwis_interrupt_free_by_idx(struct lwis_interrupt_list *list, int index, void *dev)
-{
-	BUG_ON(!list);
-
-	free_irq(list->irq[index].irq, dev);
-}
-
-void lwis_interrupt_free_by_name(struct lwis_interrupt_list *list, char *name, void *dev)
-{
-	int i;
-
-	BUG_ON(!list);
-
-	for (i = 0; i < list->count; ++i) {
-		if (!strcmp(list->irq[i].name, name)) {
-			lwis_interrupt_free_by_idx(list, i, dev);
-			return;
-		}
-	}
-
-	pr_err("Interrupt %s not found\n", name);
 }
 
 void lwis_interrupt_print(struct lwis_interrupt_list *list)
