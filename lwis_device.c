@@ -1046,10 +1046,7 @@ void lwis_dev_power_seq_list_print(struct lwis_device_power_sequence_list *list)
 	}
 }
 
-/*
- *  lwis_find_top_dev: Find LWIS top device.
- */
-struct lwis_device *lwis_find_top_dev()
+static struct lwis_device *find_top_dev()
 {
 	struct lwis_device *lwis_dev;
 
@@ -1169,7 +1166,7 @@ int lwis_base_probe(struct lwis_device *lwis_dev, struct platform_device *plat_d
 		/* Assign top device to the devices probed before */
 		lwis_assign_top_to_other(lwis_dev);
 	} else {
-		lwis_dev->top_dev = lwis_find_top_dev();
+		lwis_dev->top_dev = find_top_dev();
 		if (lwis_dev->top_dev == NULL)
 			pr_warn("Top device not probed yet");
 	}

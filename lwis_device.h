@@ -314,11 +314,6 @@ int lwis_base_probe(struct lwis_device *lwis_dev, struct platform_device *plat_d
 void lwis_base_unprobe(struct lwis_device *unprobe_lwis_dev);
 
 /*
- * Find LWIS top device
- */
-struct lwis_device *lwis_find_top_dev(void);
-
-/*
  * Find LWIS device by id
  */
 struct lwis_device *lwis_find_dev_by_id(int dev_id);
