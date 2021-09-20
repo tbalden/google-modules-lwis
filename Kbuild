@@ -19,6 +19,7 @@ lwis-objs += lwis_event.o
 lwis-objs += lwis_buffer.o
 lwis-objs += lwis_util.o
 lwis-objs += lwis_debug.o
+lwis-objs += lwis_io_entry.o
 
 # GS101 specific files
 ifeq ($(CONFIG_SOC_GS101), y)

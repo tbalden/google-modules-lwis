@@ -21,6 +21,7 @@
 
 #include "lwis_device.h"
 #include "lwis_event.h"
+#include "lwis_io_entry.h"
 #include "lwis_ioreg.h"
 #include "lwis_util.h"
 
@@ -62,55 +63,6 @@ static struct lwis_transaction_event_list *event_list_find_or_create(struct lwis
 {
 	struct lwis_transaction_event_list *list = event_list_find(client, event_id);
 	return (list == NULL) ? event_list_create(client, event_id) : list;
-}
-
-int lwis_entry_poll(struct lwis_device *lwis_dev, struct lwis_io_entry *entry, bool non_blocking)
-{
-	uint64_t val, start;
-	uint64_t timeout_ms = entry->read_assert.timeout_ms;
-	int ret = 0;
-
-	/* Only read and check once if non_blocking */
-	if (non_blocking) {
-		timeout_ms = 0;
-	}
-
-	/* Read until getting the expected value or timeout */
-	val = ~entry->read_assert.val;
-	start = ktime_to_ms(lwis_get_time());
-	while (val != entry->read_assert.val) {
-		ret = lwis_entry_read_assert(lwis_dev, entry);
-		if (ret == 0) {
-			break;
-		}
-		if (ktime_to_ms(lwis_get_time()) - start > timeout_ms) {
-			dev_err(lwis_dev->dev, "Polling timed out: block %d offset 0x%llx\n",
-				entry->read_assert.bid, entry->read_assert.offset);
-			return -ETIMEDOUT;
-		}
-		/* Sleep for 1ms */
-		usleep_range(1000, 1000);
-	}
-	return ret;
-}
-
-int lwis_entry_read_assert(struct lwis_device *lwis_dev, struct lwis_io_entry *entry)
-{
-	uint64_t val;
-	int ret = 0;
-
-	ret = lwis_device_single_register_read(lwis_dev, entry->read_assert.bid,
-					       entry->read_assert.offset, &val,
-					       lwis_dev->native_value_bitwidth);
-	if (ret) {
-		dev_err(lwis_dev->dev, "Failed to read registers: block %d offset 0x%llx\n",
-			entry->read_assert.bid, entry->read_assert.offset);
-		return ret;
-	}
-	if ((val & entry->read_assert.mask) == (entry->read_assert.val & entry->read_assert.mask)) {
-		return 0;
-	}
-	return -EINVAL;
 }
 
 static void save_transaction_to_history(struct lwis_client *client,
@@ -232,7 +184,7 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 			}
 			read_buf += sizeof(struct lwis_io_result) + io_result->num_value_bytes;
 		} else if (entry->type == LWIS_IO_ENTRY_POLL) {
-			ret = lwis_entry_poll(lwis_dev, entry, in_irq);
+			ret = lwis_io_entry_poll(lwis_dev, entry, in_irq);
 			if (ret) {
 				resp->error_code = ret;
 				if (skip_err) {
@@ -244,7 +196,7 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 				break;
 			}
 		} else if (entry->type == LWIS_IO_ENTRY_READ_ASSERT) {
-			ret = lwis_entry_read_assert(lwis_dev, entry);
+			ret = lwis_io_entry_read_assert(lwis_dev, entry);
 			if (ret) {
 				resp->error_code = ret;
 				if (skip_err) {

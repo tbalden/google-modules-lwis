@@ -25,6 +25,7 @@
 #include "lwis_device_ioreg.h"
 #include "lwis_event.h"
 #include "lwis_i2c.h"
+#include "lwis_io_entry.h"
 #include "lwis_ioreg.h"
 #include "lwis_periodic_io.h"
 #include "lwis_platform.h"
@@ -349,10 +350,10 @@ static int synchronous_process_io_entries(struct lwis_device *lwis_dev, int num_
 			ret = register_write(lwis_dev, &io_entries[i]);
 			break;
 		case LWIS_IO_ENTRY_POLL:
-			ret = lwis_entry_poll(lwis_dev, &io_entries[i], /*non_blocking=*/false);
+			ret = lwis_io_entry_poll(lwis_dev, &io_entries[i], /*non_blocking=*/false);
 			break;
 		case LWIS_IO_ENTRY_READ_ASSERT:
-			ret = lwis_entry_read_assert(lwis_dev, &io_entries[i]);
+			ret = lwis_io_entry_read_assert(lwis_dev, &io_entries[i]);
 			break;
 		default:
 			dev_err(lwis_dev->dev, "Unknown io_entry operation\n");
