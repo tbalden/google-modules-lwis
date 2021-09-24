@@ -258,7 +258,6 @@ static int lwis_release(struct inode *node, struct file *fp)
  */
 static long lwis_ioctl(struct file *fp, unsigned int type, unsigned long param)
 {
-	int ret = 0;
 	struct lwis_client *lwis_client;
 	struct lwis_device *lwis_dev;
 
@@ -274,13 +273,7 @@ static long lwis_ioctl(struct file *fp, unsigned int type, unsigned long param)
 		return -ENODEV;
 	}
 
-	ret = lwis_ioctl_handler(lwis_client, type, param);
-
-	if (ret && ret != -ENOENT && ret != -ETIMEDOUT && ret != -EAGAIN) {
-		lwis_ioctl_pr_err(lwis_dev, type, ret);
-	}
-
-	return ret;
+	return lwis_ioctl_handler(lwis_client, type, param);
 }
 /*
  *  lwis_poll: Event queue status function of LWIS

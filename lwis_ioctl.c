@@ -36,7 +36,7 @@
 #define IOCTL_ARG_SIZE(x) _IOC_SIZE(x)
 #define STRINGIFY(x) #x
 
-void lwis_ioctl_pr_err(struct lwis_device *lwis_dev, unsigned int ioctl_type, int errno)
+static void lwis_ioctl_pr_err(struct lwis_device *lwis_dev, unsigned int ioctl_type, int errno)
 {
 	unsigned int type = IOCTL_TO_ENUM(ioctl_type);
 	static char type_name[32];
@@ -71,7 +71,6 @@ void lwis_ioctl_pr_err(struct lwis_device *lwis_dev, unsigned int ioctl_type, in
 		strlcpy(type_name, STRINGIFY(LWIS_DEVICE_ENABLE), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_DEVICE_ENABLE);
 		break;
-
 	case IOCTL_TO_ENUM(LWIS_DEVICE_DISABLE):
 		strlcpy(type_name, STRINGIFY(LWIS_DEVICE_DISABLE), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_DEVICE_DISABLE);
@@ -123,6 +122,14 @@ void lwis_ioctl_pr_err(struct lwis_device *lwis_dev, unsigned int ioctl_type, in
 	case IOCTL_TO_ENUM(LWIS_DPM_GET_CLOCK):
 		strlcpy(type_name, STRINGIFY(LWIS_DPM_GET_CLOCK), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_DPM_GET_CLOCK);
+		break;
+	case IOCTL_TO_ENUM(LWIS_PERIODIC_IO_SUBMIT):
+		strlcpy(type_name, STRINGIFY(LWIS_PERIODIC_IO_SUBMIT), sizeof(type_name));
+		exp_size = IOCTL_ARG_SIZE(LWIS_PERIODIC_IO_SUBMIT);
+		break;
+	case IOCTL_TO_ENUM(LWIS_PERIODIC_IO_CANCEL):
+		strlcpy(type_name, STRINGIFY(LWIS_PERIODIC_IO_CANCEL), sizeof(type_name));
+		exp_size = IOCTL_ARG_SIZE(LWIS_PERIODIC_IO_CANCEL);
 		break;
 	default:
 		strlcpy(type_name, "UNDEFINED", sizeof(type_name));
@@ -1446,5 +1453,10 @@ out:
 	if (type != LWIS_EVENT_DEQUEUE) {
 		mutex_unlock(&lwis_client->lock);
 	}
+
+	if (ret && ret != -ENOENT && ret != -ETIMEDOUT && ret != -EAGAIN) {
+		lwis_ioctl_pr_err(lwis_dev, type, ret);
+	}
+
 	return ret;
 }
