@@ -254,6 +254,7 @@ int lwis_buffer_disenroll(struct lwis_client *lwis_client, struct lwis_enrolled_
 	list_del(&buffer->list_node);
 	if (list_empty(&buffer->enrollment_list->list)) {
 		hash_del(&buffer->enrollment_list->node);
+		kfree(buffer->enrollment_list);
 	}
 	return 0;
 }
@@ -310,7 +311,6 @@ int lwis_client_enrolled_buffers_clear(struct lwis_client *lwis_client)
 			/* Free the object */
 			kfree(buffer);
 		}
-		kfree(enrollment_list);
 	}
 
 	return 0;
