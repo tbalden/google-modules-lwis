@@ -36,13 +36,11 @@ static int parse_gpios(struct lwis_device *lwis_dev, char *name, bool *is_presen
 {
 	int count;
 	struct device *dev;
-	struct device_node *dev_node;
 	struct gpio_descs *list;
 
 	*is_present = false;
 
 	dev = &lwis_dev->plat_dev->dev;
-	dev_node = dev->of_node;
 
 	count = gpiod_count(dev, name);
 
@@ -549,7 +547,6 @@ error_parse_phy:
 
 static void parse_bitwidths(struct lwis_device *lwis_dev)
 {
-	int ret;
 	struct device *dev;
 	struct device_node *dev_node;
 	u32 addr_bitwidth = 32;
@@ -558,12 +555,12 @@ static void parse_bitwidths(struct lwis_device *lwis_dev)
 	dev = &(lwis_dev->plat_dev->dev);
 	dev_node = dev->of_node;
 
-	ret = of_property_read_u32(dev_node, "reg-addr-bitwidth", &addr_bitwidth);
+	of_property_read_u32(dev_node, "reg-addr-bitwidth", &addr_bitwidth);
 #ifdef LWIS_DT_DEBUG
 	pr_info("Addr bitwidth set to%s: %d\n", ret ? " default" : "", addr_bitwidth);
 #endif
 
-	ret = of_property_read_u32(dev_node, "reg-value-bitwidth", &value_bitwidth);
+	of_property_read_u32(dev_node, "reg-value-bitwidth", &value_bitwidth);
 #ifdef LWIS_DT_DEBUG
 	pr_info("Value bitwidth set to%s: %d\n", ret ? " default" : "", value_bitwidth);
 #endif
