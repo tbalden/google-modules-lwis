@@ -37,6 +37,7 @@ struct lwis_single_event_info {
 };
 
 static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data);
+static irqreturn_t lwis_interrupt_gpios_event_isr(int irq_number, void *data);
 
 struct lwis_interrupt_list *lwis_interrupt_list_alloc(struct lwis_device *lwis_dev, int count)
 {
@@ -102,7 +103,7 @@ int lwis_interrupt_get(struct lwis_interrupt_list *list, int index, char *name,
 	/* Initialize the spinlock */
 	spin_lock_init(&list->irq[index].lock);
 	list->irq[index].irq = irq;
-	list->irq[index].name = name;
+	strlcpy(list->irq[index].name, name, IRQ_FULL_NAME_LENGTH);
 	snprintf(list->irq[index].full_name, IRQ_FULL_NAME_LENGTH, "lwis-%s:%s",
 		 list->lwis_dev->name, name);
 	list->irq[index].has_events = false;
@@ -110,6 +111,33 @@ int lwis_interrupt_get(struct lwis_interrupt_list *list, int index, char *name,
 
 	request_irq(irq, lwis_interrupt_event_isr, IRQF_SHARED, list->irq[index].full_name,
 		    &list->irq[index]);
+
+	if (lwis_plaform_set_default_irq_affinity(list->irq[index].irq) != 0) {
+		dev_warn(list->lwis_dev->dev, "Interrupt %s cannot set affinity.\n",
+			 list->irq[index].full_name);
+	}
+
+	return 0;
+}
+
+int lwis_interrupt_get_gpio_irq(struct lwis_interrupt_list *list, int index, char *name,
+				int gpio_irq)
+{
+	if (!list || index < 0 || index >= list->count || gpio_irq <= 0) {
+		return -EINVAL;
+	}
+
+	/* Initialize the spinlock */
+	spin_lock_init(&list->irq[index].lock);
+	list->irq[index].irq = gpio_irq;
+	strlcpy(list->irq[index].name, name, IRQ_FULL_NAME_LENGTH);
+	snprintf(list->irq[index].full_name, IRQ_FULL_NAME_LENGTH, "lwis-%s:%s",
+		 list->lwis_dev->name, name);
+	list->irq[index].has_events = false;
+	list->irq[index].lwis_dev = list->lwis_dev;
+
+	request_irq(gpio_irq, lwis_interrupt_gpios_event_isr, IRQF_SHARED,
+		    list->irq[index].full_name, &list->irq[index]);
 
 	if (lwis_plaform_set_default_irq_affinity(list->irq[index].irq) != 0) {
 		dev_warn(list->lwis_dev->dev, "Interrupt %s cannot set affinity.\n",
@@ -228,6 +256,24 @@ error:
 	return IRQ_HANDLED;
 }
 
+static irqreturn_t lwis_interrupt_gpios_event_isr(int irq_number, void *data)
+{
+	unsigned long flags;
+	struct lwis_interrupt *irq = (struct lwis_interrupt *)data;
+	struct lwis_single_event_info *event;
+	struct list_head *p;
+
+	spin_lock_irqsave(&irq->lock, flags);
+	list_for_each (p, &irq->enabled_event_infos) {
+		event = list_entry(p, struct lwis_single_event_info, node_enabled);
+		/* Emit the event */
+		lwis_device_event_emit(irq->lwis_dev, event->event_id, NULL, 0, /*in_irq=*/true);
+	}
+	spin_unlock_irqrestore(&irq->lock, flags);
+
+	return IRQ_HANDLED;
+}
+
 int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index,
 				  const char *irq_reg_space, int irq_reg_bid, int64_t *irq_events,
 				  size_t irq_events_num, uint32_t *int_reg_bits,
@@ -291,8 +337,9 @@ int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index,
 		if (lwis_interrupt_get_single_event_info_locked(&list->irq[index],
 								new_event->event_id) != NULL) {
 			spin_unlock_irqrestore(&list->irq[index].lock, flags);
-			pr_err("Duplicate event_id: %lld for IRQ: %s\n", new_event->event_id,
-			       list->irq[index].name);
+			dev_err(list->lwis_dev->dev, "Duplicate event_id: %llx for IRQ: %s\n",
+				new_event->event_id, list->irq[index].name);
+			kfree(new_event);
 			return -EINVAL;
 		}
 		/* Let's add the new state object */
@@ -300,6 +347,59 @@ int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index,
 
 		spin_unlock_irqrestore(&list->irq[index].lock, flags);
 	}
+	/* It might make more sense to make has_events atomic_t instead of
+	 * locking a spinlock to write a boolean, but then we might have to deal
+	 * with barriers, etc. */
+	spin_lock_irqsave(&list->irq[index].lock, flags);
+	/* Set flag that we have events */
+	list->irq[index].has_events = true;
+	spin_unlock_irqrestore(&list->irq[index].lock, flags);
+
+	return 0;
+}
+
+int lwis_interrupt_set_gpios_event_info(struct lwis_interrupt_list *list, int index,
+					int64_t irq_event)
+{
+	unsigned long flags;
+	struct lwis_single_event_info *new_event;
+
+	/* Protect the structure */
+	spin_lock_irqsave(&list->irq[index].lock, flags);
+	/* Empty hash table for event infos */
+	hash_init(list->irq[index].event_infos);
+	/* Initialize an empty list for enabled events */
+	INIT_LIST_HEAD(&list->irq[index].enabled_event_infos);
+	spin_unlock_irqrestore(&list->irq[index].lock, flags);
+
+	/* Build the hash table of events we can emit */
+
+	new_event = kzalloc(sizeof(struct lwis_single_event_info), GFP_KERNEL);
+	if (!new_event) {
+		dev_err(list->lwis_dev->dev, "Allocate event info failed\n");
+		return -ENOMEM;
+	}
+
+	/* Fill the device id info in event id bit[47..32] */
+	irq_event |= (int64_t)(list->lwis_dev->id & 0xFFFF) << 32;
+	/* Grab the device state outside of the spinlock */
+	new_event->state = lwis_device_event_state_find_or_create(list->lwis_dev, irq_event);
+	new_event->event_id = irq_event;
+
+	spin_lock_irqsave(&list->irq[index].lock, flags);
+	/* Check for duplicate events */
+	if (lwis_interrupt_get_single_event_info_locked(&list->irq[index], new_event->event_id) !=
+	    NULL) {
+		spin_unlock_irqrestore(&list->irq[index].lock, flags);
+		dev_err(list->lwis_dev->dev, "Duplicate event_id: %llx for IRQ: %s\n",
+			new_event->event_id, list->irq[index].name);
+		kfree(new_event);
+		return -EINVAL;
+	}
+	/* Let's add the new state object */
+	hash_add(list->irq[index].event_infos, &new_event->node, new_event->event_id);
+	spin_unlock_irqrestore(&list->irq[index].lock, flags);
+
 	/* It might make more sense to make has_events atomic_t instead of
 	 * locking a spinlock to write a boolean, but then we might have to deal
 	 * with barriers, etc. */

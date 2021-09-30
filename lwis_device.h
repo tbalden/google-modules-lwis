@@ -242,6 +242,8 @@ struct lwis_device {
 	struct lwis_device_power_sequence_list *power_down_sequence;
 	/* GPIOs list */
 	struct lwis_gpios_list *gpios_list;
+	/* GPIO interrupts list */
+	struct lwis_gpios_info irq_gpios_info;
 
 	/* Power management hibernation state of the device */
 	int pm_hibernation;

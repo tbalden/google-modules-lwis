@@ -1260,6 +1260,16 @@ void lwis_base_unprobe(struct lwis_device *unprobe_lwis_dev)
 				lwis_gpios_list_free(lwis_dev->gpios_list);
 				lwis_dev->gpios_list = NULL;
 			}
+			/* Release device gpio info irq list */
+			if (lwis_dev->irq_gpios_info.irq_list) {
+				lwis_interrupt_list_free(lwis_dev->irq_gpios_info.irq_list);
+				lwis_dev->irq_gpios_info.irq_list = NULL;
+			}
+			if (lwis_dev->irq_gpios_info.gpios) {
+				lwis_gpio_list_put(lwis_dev->irq_gpios_info.gpios,
+						   &lwis_dev->plat_dev->dev);
+				lwis_dev->irq_gpios_info.gpios = NULL;
+			}
 			/* Destroy device */
 			if (!IS_ERR(lwis_dev->dev)) {
 				device_destroy(core.dev_class,
@@ -1471,34 +1481,55 @@ static void __exit lwis_driver_exit(void)
 		}
 		pm_runtime_disable(&lwis_dev->plat_dev->dev);
 		/* Release device clock list */
-		if (lwis_dev->clocks)
+		if (lwis_dev->clocks) {
 			lwis_clock_list_free(lwis_dev->clocks);
+		}
 		/* Release device interrupt list */
-		if (lwis_dev->irqs)
+		if (lwis_dev->irqs) {
 			lwis_interrupt_list_free(lwis_dev->irqs);
+		}
 		/* Release device regulator list */
 		if (lwis_dev->regulators) {
 			lwis_regulator_put_all(lwis_dev->regulators);
 			lwis_regulator_list_free(lwis_dev->regulators);
 		}
 		/* Release device phy list */
-		if (lwis_dev->phys)
+		if (lwis_dev->phys) {
 			lwis_phy_list_free(lwis_dev->phys);
+		}
 		/* Release device power sequence list */
-		if (lwis_dev->power_up_sequence)
+		if (lwis_dev->power_up_sequence) {
 			lwis_dev_power_seq_list_free(lwis_dev->power_up_sequence);
-		if (lwis_dev->power_down_sequence)
+		}
+		if (lwis_dev->power_down_sequence) {
 			lwis_dev_power_seq_list_free(lwis_dev->power_down_sequence);
+		}
 		/* Release device gpio list */
-		if (lwis_dev->gpios_list)
+		if (lwis_dev->gpios_list) {
 			lwis_gpios_list_free(lwis_dev->gpios_list);
-		if (lwis_dev->reset_gpios)
+		}
+		/* Release device gpio info irq list */
+		if (lwis_dev->irq_gpios_info.irq_list) {
+			lwis_interrupt_list_free(lwis_dev->irq_gpios_info.irq_list);
+		}
+		if (lwis_dev->irq_gpios_info.gpios) {
+			lwis_gpio_list_put(lwis_dev->irq_gpios_info.gpios,
+					   &lwis_dev->plat_dev->dev);
+		}
+		if (lwis_dev->reset_gpios) {
 			lwis_gpio_list_put(lwis_dev->reset_gpios, &lwis_dev->plat_dev->dev);
-		if (lwis_dev->enable_gpios)
+		}
+		if (lwis_dev->enable_gpios) {
 			lwis_gpio_list_put(lwis_dev->enable_gpios, &lwis_dev->plat_dev->dev);
+		}
+		if (lwis_dev->shared_enable_gpios) {
+			lwis_gpio_list_put(lwis_dev->shared_enable_gpios, &lwis_dev->plat_dev->dev);
+		}
 		/* Release event subscription components */
-		if (lwis_dev->type == DEVICE_TYPE_TOP)
+		if (lwis_dev->type == DEVICE_TYPE_TOP) {
 			lwis_dev->top_dev->subscribe_ops.release(lwis_dev);
+		}
+
 		/* Destroy device */
 		device_destroy(core.dev_class, MKDEV(core.device_major, lwis_dev->id));
 		list_del(&lwis_dev->dev_list);

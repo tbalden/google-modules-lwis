@@ -62,6 +62,114 @@ static int parse_gpios(struct lwis_device *lwis_dev, char *name, bool *is_presen
 	return 0;
 }
 
+static int parse_irq_gpios(struct lwis_device *lwis_dev)
+{
+	int count;
+	int name_count;
+	int event_count;
+	int ret;
+	struct device *dev;
+	struct device_node *dev_node;
+	struct gpio_descs *gpios;
+	const char *name;
+	char *irq_gpios_names = NULL;
+	u64 *irq_gpios_events = NULL;
+	int i;
+
+	/* Initialize the data structure */
+	strlcpy(lwis_dev->irq_gpios_info.name, "irq", LWIS_MAX_NAME_STRING_LEN);
+	lwis_dev->irq_gpios_info.gpios = NULL;
+	lwis_dev->irq_gpios_info.irq_list = NULL;
+	lwis_dev->irq_gpios_info.is_shared = false;
+	lwis_dev->irq_gpios_info.is_pulse = false;
+
+	dev = &lwis_dev->plat_dev->dev;
+	count = gpiod_count(dev, "irq");
+	/* No irq GPIO pins found, just return */
+	if (count <= 0) {
+		return 0;
+	}
+
+	dev_node = dev->of_node;
+	name_count = of_property_count_strings(dev_node, "irq-gpios-names");
+	event_count = of_property_count_elems_of_size(dev_node, "irq-gpios-events", sizeof(u64));
+	if (count != event_count || count != name_count) {
+		pr_err("Count of irq-gpios-* is not match\n");
+		return -EINVAL;
+	}
+
+	gpios = lwis_gpio_list_get(dev, "irq");
+	if (IS_ERR(gpios)) {
+		pr_err("Error parsing irq GPIO list (%ld)\n", PTR_ERR(gpios));
+		return PTR_ERR(gpios);
+	}
+	lwis_dev->irq_gpios_info.gpios = gpios;
+
+	irq_gpios_names = kmalloc(LWIS_MAX_NAME_STRING_LEN * name_count, GFP_KERNEL);
+	if (IS_ERR_OR_NULL(irq_gpios_names)) {
+		pr_err("Allocating event list failed\n");
+		ret = -ENOMEM;
+		goto error_parse_irq_gpios;
+	}
+
+	for (i = 0; i < name_count; ++i) {
+		ret = of_property_read_string_index(dev_node, "irq-gpios-names", i, &name);
+		if (ret < 0) {
+			pr_err("Error get GPIO irq name list (%d)\n", ret);
+			goto error_parse_irq_gpios;
+		}
+		strlcpy(irq_gpios_names + i * LWIS_MAX_NAME_STRING_LEN, name,
+			LWIS_MAX_NAME_STRING_LEN);
+	}
+
+	ret = lwis_gpio_list_to_irqs(lwis_dev, &lwis_dev->irq_gpios_info, irq_gpios_names);
+	if (ret) {
+		pr_err("Error get GPIO irq list (%d)\n", ret);
+		goto error_parse_irq_gpios;
+	}
+
+	irq_gpios_events = kmalloc(sizeof(u64) * event_count, GFP_KERNEL);
+	if (IS_ERR_OR_NULL(irq_gpios_events)) {
+		pr_err("Allocating event list failed\n");
+		ret = -ENOMEM;
+		goto error_parse_irq_gpios;
+	}
+
+	event_count = of_property_read_variable_u64_array(
+		dev_node, "irq-gpios-events", irq_gpios_events, event_count, event_count);
+	if (event_count != count) {
+		pr_err("Error getting irq-gpios-events: %d\n", event_count);
+		ret = event_count;
+		goto error_parse_irq_gpios;
+	}
+
+	for (i = 0; i < event_count; ++i) {
+		ret = lwis_interrupt_set_gpios_event_info(lwis_dev->irq_gpios_info.irq_list, i,
+							  irq_gpios_events[i]);
+		if (ret) {
+			pr_err("Error setting event info for gpios interrupt %d %d\n", i, ret);
+			goto error_parse_irq_gpios;
+		}
+	}
+
+	kfree(irq_gpios_names);
+	kfree(irq_gpios_events);
+	return 0;
+
+error_parse_irq_gpios:
+	if (lwis_dev->irq_gpios_info.gpios) {
+		lwis_gpio_list_put(lwis_dev->irq_gpios_info.gpios, dev);
+		lwis_dev->irq_gpios_info.gpios = NULL;
+	}
+	if (irq_gpios_names) {
+		kfree(irq_gpios_names);
+	}
+	if (irq_gpios_events) {
+		kfree(irq_gpios_events);
+	}
+	return ret;
+}
+
 static int parse_settle_time(struct lwis_device *lwis_dev)
 {
 	struct device_node *dev_node;
@@ -282,6 +390,7 @@ static int parse_critical_irq_events(struct device_node *event_info, u64** irq_e
 
 	return critical_irq_events_num;
 }
+
 static int parse_interrupts(struct lwis_device *lwis_dev)
 {
 	int i;
@@ -672,6 +781,7 @@ static int parse_power_up_seqs(struct lwis_device *lwis_dev)
 			seq_item_name = lwis_dev->power_up_sequence->seq_info[i].name;
 
 			gpios_info->gpios = NULL;
+			gpios_info->irq_list = NULL;
 			strlcpy(gpios_info->name, seq_item_name, LWIS_MAX_NAME_STRING_LEN);
 
 			if (strncmp(SHARED_STRING, seq_item_name, strlen(SHARED_STRING)) == 0) {
@@ -876,6 +986,12 @@ int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 	ret = parse_gpios(lwis_dev, "reset", &lwis_dev->reset_gpios_present);
 	if (ret) {
 		pr_err("Error parsing reset-gpios\n");
+		return ret;
+	}
+
+	ret = parse_irq_gpios(lwis_dev);
+	if (ret) {
+		pr_err("Error parsing irq-gpios\n");
 		return ret;
 	}
 
