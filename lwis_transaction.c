@@ -24,6 +24,9 @@
 #include "lwis_ioreg.h"
 #include "lwis_util.h"
 
+#define CREATE_TRACE_POINTS
+#include "lwis_trace.h"
+
 #define EXPLICIT_EVENT_COUNTER(x)                                                                  \
 	((x) != LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE && (x) != LWIS_EVENT_COUNTER_EVERY_TIME)
 
@@ -156,6 +159,7 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 	int64_t process_duration_ns = 0;
 	int64_t process_timestamp = ktime_to_ns(lwis_get_time());
 
+	LWIS_ATRACE_FUNC_BEGIN(lwis_dev);
 	resp_size = sizeof(struct lwis_transaction_response_header) + resp->results_size_bytes;
 	read_buf = (uint8_t *)resp + sizeof(struct lwis_transaction_response_header);
 	resp->completion_index = -1;
@@ -299,6 +303,7 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 	} else {
 		free_transaction(transaction);
 	}
+	LWIS_ATRACE_FUNC_END(lwis_dev);
 	return ret;
 }
 
