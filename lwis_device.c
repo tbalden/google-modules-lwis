@@ -1247,6 +1247,7 @@ void lwis_base_unprobe(struct lwis_device *unprobe_lwis_dev)
 			}
 			/* Release device regulator list */
 			if (lwis_dev->regulators) {
+				lwis_regulator_put_all(lwis_dev->regulators);
 				lwis_regulator_list_free(lwis_dev->regulators);
 				lwis_dev->regulators = NULL;
 			}
@@ -1486,8 +1487,10 @@ static void __exit lwis_driver_exit(void)
 		if (lwis_dev->irqs)
 			lwis_interrupt_list_free(lwis_dev->irqs);
 		/* Release device regulator list */
-		if (lwis_dev->regulators)
+		if (lwis_dev->regulators) {
+			lwis_regulator_put_all(lwis_dev->regulators);
 			lwis_regulator_list_free(lwis_dev->regulators);
+		}
 		/* Release device phy list */
 		if (lwis_dev->phys)
 			lwis_phy_list_free(lwis_dev->phys);
