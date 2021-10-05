@@ -293,16 +293,17 @@ static int lwis_client_event_subscribe(struct lwis_client *lwis_client, int64_t 
 		return -EINVAL;
 	}
 
-	/* Create event state to trigger/receiver device
+	/* Create event state to trigger/subscriber device
 	 * Because of driver initialize in user space is sequential, it's
-	 * possible that receiver device subscribe an event before trigger
+	 * possible that subscriber device subscribe an event before trigger
 	 * device set it up
 	 */
 	if (IS_ERR_OR_NULL(lwis_device_event_state_find_or_create(lwis_dev, trigger_event_id)) ||
 	    IS_ERR_OR_NULL(lwis_client_event_state_find_or_create(lwis_client, trigger_event_id)) ||
 	    IS_ERR_OR_NULL(
 		    lwis_device_event_state_find_or_create(trigger_device, trigger_event_id))) {
-		dev_err(lwis_dev->dev, "Failed to add event id 0x%llx to trigger/receiver device\n",
+		dev_err(lwis_dev->dev,
+			"Failed to add event id 0x%llx to trigger/subscriber device\n",
 			trigger_event_id);
 
 		return -EINVAL;
@@ -378,7 +379,7 @@ int lwis_client_event_control_set(struct lwis_client *lwis_client,
 			 */
 			if (lwis_client->lwis_dev->type == DEVICE_TYPE_TOP) {
 				dev_err(lwis_client->lwis_dev->dev,
-					"Disallow top device being the receiver device\n");
+					"Disallow top device being the subscriber device\n");
 				return -EPERM;
 			}
 

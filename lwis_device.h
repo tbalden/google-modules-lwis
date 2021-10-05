@@ -105,12 +105,12 @@ struct lwis_device_subclass_operations {
  * Top device should be the only device to implement it.
  */
 struct lwis_event_subscribe_operations {
-	/* Subscribe an event for receiver device */
+	/* Subscribe an event for subscriber device */
 	int (*subscribe_event)(struct lwis_device *lwis_dev, int64_t trigger_event_id,
-			       int trigger_device_id, int receiver_device_id);
-	/* Unsubscribe an event for receiver device */
+			       int trigger_device_id, int subscriber_device_id);
+	/* Unsubscribe an event for subscriber device */
 	int (*unsubscribe_event)(struct lwis_device *lwis_dev, int64_t trigger_event_id,
-				 int receiver_device_id);
+				 int subscriber_device_id);
 	/* Notify subscriber when an event is happening */
 	void (*notify_event_subscriber)(struct lwis_device *lwis_dev, int64_t trigger_event_id,
 					int64_t trigger_event_count,
