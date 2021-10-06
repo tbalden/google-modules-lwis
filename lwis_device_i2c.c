@@ -15,15 +15,19 @@
 #include <linux/device.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
+#include <linux/kthread.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/pm.h>
 #include <linux/preempt.h>
 #include <linux/slab.h>
+#include <linux/sched/types.h>
+#include <uapi/linux/sched/types.h>
 
 #include "lwis_i2c.h"
 #include "lwis_init.h"
 #include "lwis_periodic_io.h"
+#include "lwis_util.h"
 
 #ifdef CONFIG_OF
 #include "lwis_dt.h"
@@ -246,6 +250,14 @@ static int lwis_i2c_device_probe(struct platform_device *plat_dev)
 	ret = lwis_i2c_device_setup(i2c_dev);
 	if (ret) {
 		dev_err(i2c_dev->base_dev.dev, "Error in i2c device initialization\n");
+		lwis_base_unprobe((struct lwis_device *)i2c_dev);
+		goto error_probe;
+	}
+
+	/* Create an associated kworker thread */
+	ret = lwis_create_kthread_worker(&i2c_dev->base_dev, "lwis_i2c_kthread");
+	if (ret) {
+		dev_err(i2c_dev->base_dev.dev,"Failed to create lwis_i2c_kthread");
 		lwis_base_unprobe((struct lwis_device *)i2c_dev);
 		goto error_probe;
 	}

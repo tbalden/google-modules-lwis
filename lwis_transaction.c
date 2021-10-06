@@ -14,7 +14,6 @@
 
 #include <linux/delay.h>
 #include <linux/kernel.h>
-#include <linux/kthread.h>
 #include <linux/mm.h>
 #include <linux/slab.h>
 #include <linux/workqueue.h>
@@ -318,10 +317,9 @@ static void transaction_tasklet_func(unsigned long data)
 				      /*in_irq=*/true);
 }
 
-static void transaction_work_func(struct work_struct *work)
+static void transaction_work_func(struct kthread_work *work)
 {
 	struct lwis_client *client = container_of(work, struct lwis_client, transaction_work);
-
 	process_transactions_in_queue(client, &client->transaction_process_queue, /*in_irq=*/false);
 }
 
@@ -331,15 +329,7 @@ int lwis_transaction_init(struct lwis_client *client)
 	INIT_LIST_HEAD(&client->transaction_process_queue_tasklet);
 	tasklet_init(&client->transaction_tasklet, transaction_tasklet_func, (unsigned long)client);
 	INIT_LIST_HEAD(&client->transaction_process_queue);
-	if (client->lwis_dev->adjust_thread_priority != 0) {
-		/* Since I2C transactions can only be executed in workqueues, putting them in high
-		 * priority to avoid scheduling delays. */
-		client->transaction_wq = alloc_ordered_workqueue(
-			"lwistran-i2c", __WQ_LEGACY | WQ_MEM_RECLAIM | WQ_HIGHPRI);
-	} else {
-		client->transaction_wq = create_workqueue("lwistran");
-	}
-	INIT_WORK(&client->transaction_work, transaction_work_func);
+	kthread_init_work(&client->transaction_work, transaction_work_func);
 	client->transaction_counter = 0;
 	hash_init(client->transaction_list);
 	return 0;
@@ -356,9 +346,6 @@ int lwis_transaction_clear(struct lwis_client *client)
 		return ret;
 	}
 	tasklet_kill(&client->transaction_tasklet);
-	if (client->transaction_wq) {
-		destroy_workqueue(client->transaction_wq);
-	}
 	return 0;
 }
 
@@ -392,9 +379,8 @@ int lwis_transaction_client_flush(struct lwis_client *client)
 	}
 	spin_unlock_irqrestore(&client->transaction_lock, flags);
 
-	if (client->transaction_wq) {
-		drain_workqueue(client->transaction_wq);
-	}
+	if (client->lwis_dev->transaction_worker_thread)
+		kthread_flush_worker(&client->lwis_dev->transaction_worker);
 
 	spin_lock_irqsave(&client->transaction_lock, flags);
 	/* This shouldn't happen after drain_workqueue, but check anyway. */
@@ -632,7 +618,7 @@ static int queue_transaction_locked(struct lwis_client *client,
 			tasklet_schedule(&client->transaction_tasklet);
 		} else {
 			list_add_tail(&transaction->process_queue_node, &client->transaction_process_queue);
-			queue_work(client->transaction_wq, &client->transaction_work);
+			kthread_queue_work(&client->lwis_dev->transaction_worker, &client->transaction_work);
 		}
 	} else {
 		/* Trigger by event. */
@@ -790,7 +776,8 @@ int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
 		tasklet_schedule(&client->transaction_tasklet);
 	}
 	if (!list_empty(&client->transaction_process_queue)) {
-		queue_work(client->transaction_wq, &client->transaction_work);
+		kthread_queue_work(&client->lwis_dev->transaction_worker,
+				&client->transaction_work);
 	}
 
 	spin_unlock_irqrestore(&client->transaction_lock, flags);

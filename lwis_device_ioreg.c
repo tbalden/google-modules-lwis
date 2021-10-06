@@ -23,6 +23,7 @@
 #include "lwis_interrupt.h"
 #include "lwis_ioreg.h"
 #include "lwis_periodic_io.h"
+#include "lwis_util.h"
 
 #ifdef CONFIG_OF
 #include "lwis_dt.h"
@@ -121,6 +122,14 @@ static int lwis_ioreg_device_probe(struct platform_device *plat_dev)
 	ret = lwis_ioreg_device_setup(ioreg_dev);
 	if (ret) {
 		dev_err(ioreg_dev->base_dev.dev, "Error in IOREG device initialization\n");
+		lwis_base_unprobe((struct lwis_device *)ioreg_dev);
+		goto error_probe;
+	}
+
+	/* Create an associated kworker thread */
+	ret = lwis_create_kthread_worker(&ioreg_dev->base_dev, "lwis_ioreg_kthread");
+	if (ret) {
+		dev_err(ioreg_dev->base_dev.dev, "Failed to create lwis_ioreg_kthread");
 		lwis_base_unprobe((struct lwis_device *)ioreg_dev);
 		goto error_probe;
 	}

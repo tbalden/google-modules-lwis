@@ -93,3 +93,15 @@ const char *lwis_device_type_to_string(int32_t type)
 		return "UNKNOWN";
 	}
 }
+
+int lwis_create_kthread_worker(struct lwis_device *dev, const char *transaction_worker_name)
+{
+	kthread_init_worker(&dev->transaction_worker);
+	dev->transaction_worker_thread = kthread_run(kthread_worker_fn, &dev->transaction_worker,
+			transaction_worker_name);
+	if (IS_ERR(dev->transaction_worker_thread))
+		return -EINVAL;
+
+	return 0;
+
+}
