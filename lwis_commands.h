@@ -211,6 +211,8 @@ struct lwis_echo {
 // Event flags used for transaction events.
 #define LWIS_TRANSACTION_EVENT_FLAG (1ULL << 63)
 #define LWIS_TRANSACTION_FAILURE_EVENT_FLAG (1ULL << 62)
+#define LWIS_HW_IRQ_EVENT_FLAG (1ULL << 61)
+#define LWIS_PERIODIC_IO_EVENT_FLAG (1ULL << 60)
 
 struct lwis_event_info {
 	// IOCTL Inputs
