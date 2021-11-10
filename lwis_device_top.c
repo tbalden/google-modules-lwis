@@ -373,7 +373,10 @@ static int lwis_top_register_io(struct lwis_device *lwis_dev, struct lwis_io_ent
 	int i;
 	uint64_t reg_value;
 
-	BUG_ON(!entry);
+	if (!entry) {
+		dev_err(top_dev->base_dev.dev, "IO entry is NULL.\n");
+		return -EINVAL;
+	}
 
 	if (entry->type == LWIS_IO_ENTRY_READ) {
 		if (entry->rw.offset >= SCRATCH_MEMORY_SIZE) {

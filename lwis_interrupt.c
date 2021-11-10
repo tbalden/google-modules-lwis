@@ -125,7 +125,10 @@ lwis_interrupt_get_single_event_info_locked(struct lwis_interrupt *irq, int64_t 
 	/* Our hash iterator */
 	struct lwis_single_event_info *p;
 
-	BUG_ON(!irq);
+	if (!irq) {
+		pr_err("irq is NULL.\n");
+		return NULL;
+	}
 
 	/* Iterate through the hash bucket for this event_id */
 	hash_for_each_possible (irq->event_infos, p, node, event_id) {
@@ -236,7 +239,11 @@ int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index,
 	int i, j;
 	unsigned long flags;
 	bool is_critical = false;
-	BUG_ON(int_reg_bits_num != irq_events_num);
+
+	if (int_reg_bits_num != irq_events_num) {
+		pr_err("reg bits num != irq event num.\n");
+		return -EINVAL;
+	}
 
 	/* Protect the structure */
 	spin_lock_irqsave(&list->irq[index].lock, flags);
@@ -308,7 +315,11 @@ static int lwis_interrupt_set_mask(struct lwis_interrupt *irq, int int_reg_bit, 
 {
 	int ret = 0;
 	uint64_t mask_value = 0;
-	BUG_ON(!irq);
+
+	if (!irq) {
+		pr_err("irq is NULL.\n");
+		return -EINVAL;
+	}
 
 	/* Read the mask register */
 	ret = lwis_device_single_register_read(irq->lwis_dev, irq->irq_reg_bid, irq->irq_mask_reg,
@@ -342,8 +353,16 @@ static int lwis_interrupt_single_event_enable_locked(struct lwis_interrupt *irq,
 {
 	int ret = 0;
 	bool is_set;
-	BUG_ON(!irq);
-	BUG_ON(!event);
+
+	if (!irq) {
+		pr_err("irq is NULL.\n");
+		return -EINVAL;
+	}
+
+	if (!event) {
+		pr_err("event is NULL.\n");
+		return -EINVAL;
+	}
 
 	if (enabled) {
 		list_add_tail(&event->node_enabled, &irq->enabled_event_infos);
@@ -363,7 +382,11 @@ int lwis_interrupt_event_enable(struct lwis_interrupt_list *list, int64_t event_
 	int index, ret = -EINVAL;
 	unsigned long flags;
 	struct lwis_single_event_info *event;
-	BUG_ON(!list);
+
+	if (!list) {
+		pr_err("Interrupt list is NULL.\n");
+		return -EINVAL;
+	}
 
 	for (index = 0; index < list->count; index++) {
 		spin_lock_irqsave(&list->irq[index].lock, flags);

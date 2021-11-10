@@ -553,8 +553,15 @@ static int check_transaction_param_locked(struct lwis_client *client,
 	struct lwis_transaction_info *info = &transaction->info;
 	struct lwis_device *lwis_dev = client->lwis_dev;
 
-	BUG_ON(!client);
-	BUG_ON(!transaction);
+	if (!client) {
+		pr_err("Client is NULL while checking transaction parameter.\n");
+		return -ENODEV;
+	}
+
+	if (!transaction) {
+		dev_err(lwis_dev->dev, "Transaction is NULL.\n");
+		return -ENODEV;
+	}
 
 	/* Initialize event counter return value  */
 	info->current_trigger_event_counter = -1LL;
