@@ -827,6 +827,17 @@ static int parse_pm_hibernation(struct lwis_device *lwis_dev)
 	return 0;
 }
 
+static int parse_access_mode(struct lwis_device *lwis_dev)
+{
+	struct device_node *dev_node;
+
+	dev_node = lwis_dev->plat_dev->dev.of_node;
+
+	lwis_dev->is_read_only = of_property_read_bool(dev_node, "lwis,read-only");
+
+	return 0;
+}
+
 int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 {
 	struct device *dev;
@@ -926,6 +937,8 @@ int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 		pr_err("Error parsing pm hibernation");
 		return ret;
 	}
+
+	parse_access_mode(lwis_dev);
 
 	parse_bitwidths(lwis_dev);
 

@@ -224,6 +224,11 @@ static int i2c_write(struct lwis_i2c_device *i2c, uint64_t offset, uint64_t valu
 	}
 	client = i2c->client;
 
+	if (i2c->base_dev.is_read_only) {
+		dev_err(i2c->base_dev.dev, "Device is read only\n");
+		return -EPERM;
+	}
+
 	if (!check_bitwidth(offset_bits, MIN_OFFSET_BITS, MAX_OFFSET_BITS)) {
 		dev_err(i2c->base_dev.dev, "Invalid offset bitwidth %d\n", offset_bits);
 		return -EINVAL;
@@ -323,6 +328,11 @@ static int i2c_write_batch(struct lwis_i2c_device *i2c, uint64_t start_offset, u
 		return -ENODEV;
 	}
 	client = i2c->client;
+
+	if (i2c->base_dev.is_read_only) {
+		dev_err(i2c->base_dev.dev, "Device is read only\n");
+		return -EPERM;
+	}
 
 	if (!check_bitwidth(offset_bits, MIN_OFFSET_BITS, MAX_OFFSET_BITS)) {
 		dev_err(i2c->base_dev.dev, "Invalid offset bitwidth %d\n", offset_bits);
