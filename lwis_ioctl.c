@@ -655,6 +655,7 @@ static int ioctl_echo(struct lwis_device *lwis_dev, struct lwis_echo __user *msg
 	if (copy_from_user(buffer, (void __user *)echo_msg.msg, echo_msg.size)) {
 		dev_err(lwis_dev->dev, "Failed to copy %zu bytes echo message from user\n",
 			echo_msg.size);
+		kfree(buffer);
 		return -EFAULT;
 	}
 	buffer[echo_msg.size] = '\0';
@@ -662,6 +663,7 @@ static int ioctl_echo(struct lwis_device *lwis_dev, struct lwis_echo __user *msg
 	if (echo_msg.kernel_log) {
 		dev_info(lwis_dev->dev, "LWIS_ECHO: %s\n", buffer);
 	}
+	kfree(buffer);
 	return 0;
 }
 
