@@ -156,7 +156,6 @@ int lwis_dpm_update_clock(struct lwis_device *lwis_dev, struct lwis_clk_setting 
 			 clk_get_rate(lwis_dev->clocks->clk[clk_index].clk));
 	}
 out:
-	kfree(clk_settings);
 	return ret;
 }
 

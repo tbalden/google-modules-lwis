@@ -1247,6 +1247,7 @@ static int ioctl_periodic_io_cancel(struct lwis_client *client, int64_t __user *
 static int ioctl_dpm_clk_update(struct lwis_device *lwis_dev,
 				struct lwis_dpm_clk_settings __user *msg)
 {
+	int ret;
 	struct lwis_dpm_clk_settings k_msg;
 	struct lwis_clk_setting *clk_settings;
 	size_t buf_size;
@@ -1270,7 +1271,9 @@ static int ioctl_dpm_clk_update(struct lwis_device *lwis_dev,
 		return -EFAULT;
 	}
 
-	return lwis_dpm_update_clock(lwis_dev, clk_settings, k_msg.num_settings);
+	ret = lwis_dpm_update_clock(lwis_dev, clk_settings, k_msg.num_settings);
+	kfree(clk_settings);
+	return ret;
 }
 
 static int ioctl_dpm_qos_update(struct lwis_device *lwis_dev,
