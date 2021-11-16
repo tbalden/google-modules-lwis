@@ -429,10 +429,10 @@ void lwis_periodic_io_clean(struct lwis_periodic_io *periodic_io)
 	int i;
 	for (i = 0; i < periodic_io->info.num_io_entries; ++i) {
 		if (periodic_io->info.io_entries[i].type == LWIS_IO_ENTRY_WRITE_BATCH) {
-			kfree(periodic_io->info.io_entries[i].rw_batch.buf);
+			kvfree(periodic_io->info.io_entries[i].rw_batch.buf);
 		}
 	}
-	kfree(periodic_io->info.io_entries);
+	kvfree(periodic_io->info.io_entries);
 
 	/* resp may not be allocated before the periodic_io is successfully
 	 * submitted */
