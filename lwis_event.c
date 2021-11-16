@@ -280,12 +280,6 @@ static int lwis_client_event_subscribe(struct lwis_client *lwis_client, int64_t 
 		return -EINVAL;
 	}
 
-	if ((trigger_event_id & LWIS_TRANSACTION_EVENT_FLAG) ||
-	    (trigger_event_id & LWIS_TRANSACTION_FAILURE_EVENT_FLAG)) {
-		dev_err(lwis_dev->dev, "Not support SW event subscription\n");
-		return -EINVAL;
-	}
-
 	trigger_device = lwis_find_dev_by_id(trigger_device_id);
 	if (!trigger_device) {
 		dev_err(lwis_dev->dev, "Device id : %d doesn't match to any device\n",
