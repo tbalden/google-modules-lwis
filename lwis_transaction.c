@@ -689,6 +689,9 @@ new_repeating_transaction_iteration(struct lwis_client *client,
 	memcpy(resp_buf, transaction->resp, sizeof(struct lwis_transaction_response_header));
 	new_instance->resp = (struct lwis_transaction_response_header *)resp_buf;
 
+	INIT_LIST_HEAD(&new_instance->event_list_node);
+	INIT_LIST_HEAD(&new_instance->process_queue_node);
+
 	return new_instance;
 }
 
