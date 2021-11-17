@@ -51,6 +51,11 @@ struct lwis_device;
 /* Forward declaration of a platform specific struct used by platform funcs */
 struct lwis_platform;
 
+/* Forward declaration of lwis allocator block manager */
+struct lwis_allocator_block_mgr;
+int lwis_allocator_init(struct lwis_device *lwis_dev);
+void lwis_allocator_release(struct lwis_device *lwis_dev);
+
 /*
  *  struct lwis_core
  *  This struct applies to all LWIS devices that are defined in the
@@ -249,6 +254,9 @@ struct lwis_device {
 	int pm_hibernation;
 	/* Is device read only */
 	bool is_read_only;
+
+	/* LWIS allocator block manager */
+	struct lwis_allocator_block_mgr *block_mgr;
 };
 
 /*
