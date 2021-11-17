@@ -424,9 +424,10 @@ static int queue_periodic_io_locked(struct lwis_client *client,
 	return 0;
 }
 
-void lwis_periodic_io_clean(struct lwis_periodic_io *periodic_io)
+void lwis_periodic_io_free(struct lwis_periodic_io *periodic_io)
 {
 	int i;
+
 	for (i = 0; i < periodic_io->info.num_io_entries; ++i) {
 		if (periodic_io->info.io_entries[i].type == LWIS_IO_ENTRY_WRITE_BATCH) {
 			kvfree(periodic_io->info.io_entries[i].rw_batch.buf);
@@ -434,8 +435,7 @@ void lwis_periodic_io_clean(struct lwis_periodic_io *periodic_io)
 	}
 	kvfree(periodic_io->info.io_entries);
 
-	/* resp may not be allocated before the periodic_io is successfully
-	 * submitted */
+	/* resp may not be allocated before the periodic_io is successfully submitted */
 	if (periodic_io->resp) {
 		kfree(periodic_io->resp);
 	}
@@ -526,7 +526,7 @@ int lwis_periodic_io_client_flush(struct lwis_client *client)
 			periodic_io =
 				list_entry(it_period, struct lwis_periodic_io, timer_list_node);
 			list_del(it_period);
-			lwis_periodic_io_clean(periodic_io);
+			lwis_periodic_io_free(periodic_io);
 		}
 	}
 	spin_unlock_irqrestore(&client->periodic_io_lock, flags);
