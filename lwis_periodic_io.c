@@ -157,7 +157,7 @@ static int process_io_entries(struct lwis_client *client,
 {
 	int i;
 	int ret = 0;
-	struct lwis_io_entry *entry;
+	struct lwis_io_entry *entry = NULL;
 	struct lwis_device *lwis_dev = client->lwis_dev;
 	struct lwis_periodic_io *periodic_io = periodic_io_proxy->periodic_io;
 	struct lwis_periodic_io_info *info = &periodic_io->info;
@@ -356,7 +356,6 @@ static int prepare_emit_events(struct lwis_client *client, struct lwis_periodic_
 static int prepare_response(struct lwis_client *client, struct lwis_periodic_io *periodic_io)
 {
 	struct lwis_periodic_io_info *info = &periodic_io->info;
-	struct lwis_io_entry *entry;
 	int i;
 	size_t resp_size;
 	size_t read_buf_size = 0;
@@ -369,7 +368,7 @@ static int prepare_response(struct lwis_client *client, struct lwis_periodic_io 
 	spin_unlock_irqrestore(&client->periodic_io_lock, flags);
 
 	for (i = 0; i < info->num_io_entries; ++i) {
-		entry = &info->io_entries[i];
+		struct lwis_io_entry *entry = &info->io_entries[i];
 		if (entry->type == LWIS_IO_ENTRY_READ) {
 			read_buf_size += reg_value_bytewidth;
 			read_entries++;
@@ -457,11 +456,10 @@ int lwis_periodic_io_submit(struct lwis_client *client, struct lwis_periodic_io 
 	bool has_one_write = false;
 	unsigned long flags;
 	struct lwis_periodic_io_info *info = &periodic_io->info;
-	struct lwis_io_entry *entry;
 
 	periodic_io->contains_multiple_writes = false;
 	for (i = 0; i < info->num_io_entries; ++i) {
-		entry = &info->io_entries[i];
+		struct lwis_io_entry *entry = &info->io_entries[i];
 		if (entry->type == LWIS_IO_ENTRY_WRITE ||
 		    entry->type == LWIS_IO_ENTRY_WRITE_BATCH ||
 		    entry->type == LWIS_IO_ENTRY_MODIFY) {
