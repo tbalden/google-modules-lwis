@@ -387,10 +387,11 @@ static int lwis_top_register_io(struct lwis_device *lwis_dev, struct lwis_io_ent
 		entry->rw.val = top_dev->scratch_mem[entry->rw.offset];
 	} else if (entry->type == LWIS_IO_ENTRY_READ_BATCH) {
 		rw_batch = &entry->rw_batch;
-		if (rw_batch->offset + rw_batch->size_in_bytes > SCRATCH_MEMORY_SIZE) {
+		if (rw_batch->offset > SCRATCH_MEMORY_SIZE ||
+		    SCRATCH_MEMORY_SIZE - rw_batch->offset < rw_batch->size_in_bytes) {
 			dev_err(top_dev->base_dev.dev,
-				"Read range (%llu) exceeds scratch memory (%d)\n",
-				rw_batch->offset + rw_batch->size_in_bytes, SCRATCH_MEMORY_SIZE);
+				"Read range[offset(%llu) + size_in_bytes(%zu)] exceeds scratch memory (%d)\n",
+				rw_batch->offset, rw_batch->size_in_bytes, SCRATCH_MEMORY_SIZE);
 			return -EINVAL;
 		}
 		for (i = 0; i < rw_batch->size_in_bytes; ++i) {
@@ -405,10 +406,11 @@ static int lwis_top_register_io(struct lwis_device *lwis_dev, struct lwis_io_ent
 		top_dev->scratch_mem[entry->rw.offset] = entry->rw.val;
 	} else if (entry->type == LWIS_IO_ENTRY_WRITE_BATCH) {
 		rw_batch = &entry->rw_batch;
-		if (rw_batch->offset + rw_batch->size_in_bytes > SCRATCH_MEMORY_SIZE) {
+		if (rw_batch->offset > SCRATCH_MEMORY_SIZE ||
+		    SCRATCH_MEMORY_SIZE - rw_batch->offset < rw_batch->size_in_bytes) {
 			dev_err(top_dev->base_dev.dev,
-				"Write range (%llu) exceeds scratch memory (%d)\n",
-				rw_batch->offset + rw_batch->size_in_bytes, SCRATCH_MEMORY_SIZE);
+				"Write range[offset(%llu) + size_in_bytes(%zu)] exceeds scratch memory (%d)\n",
+				rw_batch->offset, rw_batch->size_in_bytes, SCRATCH_MEMORY_SIZE);
 			return -EINVAL;
 		}
 		for (i = 0; i < rw_batch->size_in_bytes; ++i) {
