@@ -176,6 +176,7 @@ static void lwis_top_event_notify(struct lwis_device *lwis_dev, int64_t trigger_
 		return;
 	}
 
+	INIT_LIST_HEAD(&trigger_event->node);
 	trigger_event->trigger_event_id = trigger_event_id;
 	trigger_event->trigger_event_count = trigger_event_count;
 	trigger_event->trigger_event_timestamp = trigger_event_timestamp;
@@ -235,6 +236,7 @@ static int lwis_top_event_subscribe(struct lwis_device *lwis_dev, int64_t trigge
 			"Failed to allocate memory for new subscription\n");
 		return -ENOMEM;
 	}
+	INIT_LIST_HEAD(&new_subscription->list_node);
 	new_subscription->event_id = trigger_event_id;
 	new_subscription->subscriber_dev = lwis_subscriber_dev;
 	new_subscription->trigger_dev = lwis_trigger_dev;
