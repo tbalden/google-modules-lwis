@@ -1,5 +1,5 @@
 /*
- * Google LWIS GS101 Platform-Specific Functions
+ * Google LWIS Anchorage Platform-Specific Functions
  *
  * Copyright (c) 2020 Google, LLC
  *
@@ -8,8 +8,8 @@
  * published by the Free Software Foundation.
  */
 
-#ifndef LWIS_PLATFORM_GS101_H_
-#define LWIS_PLATFORM_GS101_H_
+#ifndef LWIS_PLATFORM_ANCHORAGE_H_
+#define LWIS_PLATFORM_ANCHORAGE_H_
 
 #include <soc/google/exynos_pm_qos.h>
 
@@ -22,4 +22,4 @@ struct lwis_platform {
 	/* struct exynos_pm_qos_request pm_qos_hpg; */
 };
 
-#endif /* LWIS_PLATFORM_GS101_H_ */
+#endif /* LWIS_PLATFORM_ANCHORAGE_H_ */
