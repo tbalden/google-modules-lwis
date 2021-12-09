@@ -102,7 +102,7 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 {
 	int i;
 	int ret = 0;
-	struct lwis_io_entry *entry;
+	struct lwis_io_entry *entry = NULL;
 	struct lwis_device *lwis_dev = client->lwis_dev;
 	struct lwis_transaction_info *info = &transaction->info;
 	struct lwis_transaction_response_header *resp = transaction->resp;
@@ -569,7 +569,6 @@ static int check_transaction_param_locked(struct lwis_client *client,
 static int prepare_response_locked(struct lwis_client *client, struct lwis_transaction *transaction)
 {
 	struct lwis_transaction_info *info = &transaction->info;
-	struct lwis_io_entry *entry;
 	int i;
 	size_t resp_size;
 	size_t read_buf_size = 0;
@@ -579,7 +578,7 @@ static int prepare_response_locked(struct lwis_client *client, struct lwis_trans
 	info->id = client->transaction_counter;
 
 	for (i = 0; i < info->num_io_entries; ++i) {
-		entry = &info->io_entries[i];
+		struct lwis_io_entry *entry = &info->io_entries[i];
 		if (entry->type == LWIS_IO_ENTRY_READ) {
 			read_buf_size += reg_value_bytewidth;
 			read_entries++;

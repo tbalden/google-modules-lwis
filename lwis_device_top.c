@@ -260,8 +260,8 @@ static int lwis_top_event_unsubscribe(struct lwis_device *lwis_dev, int64_t trig
 				      int subscriber_device_id)
 {
 	struct lwis_top_device *lwis_top_dev = (struct lwis_top_device *)lwis_dev;
-	struct lwis_device *trigger_dev;
-	struct lwis_event_subscribe_info *subscribe_info;
+	struct lwis_device *trigger_dev = NULL;
+	struct lwis_event_subscribe_info *subscribe_info = NULL;
 	struct lwis_event_subscriber_list *event_subscriber_list;
 	struct list_head *it_event_subscriber, *it_event_subscriber_tmp;
 	struct lwis_trigger_event_info *pending_event, *n;
