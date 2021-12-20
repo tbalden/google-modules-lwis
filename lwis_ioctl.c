@@ -293,10 +293,14 @@ static int copy_io_entries(struct lwis_device *lwis_dev, struct lwis_io_entries 
 
 	/* Copy io_entries from userspace */
 	if (copy_from_user(k_msg, (void __user *)user_msg, sizeof(*k_msg))) {
-		dev_err(lwis_dev->dev, "Failed to copy io_entries header from userspace.");
+		dev_err(lwis_dev->dev, "Failed to copy io_entries header from userspace.\n");
 		return -EFAULT;
 	}
 	buf_size = sizeof(struct lwis_io_entry) * k_msg->num_io_entries;
+	if (buf_size / sizeof(struct lwis_io_entry) != k_msg->num_io_entries) {
+		dev_err(lwis_dev->dev, "Failed to copy io_entries due to integer overflow.\n");
+		return -EINVAL;
+	}
 	io_entries = kvmalloc(buf_size, GFP_KERNEL);
 	if (!io_entries) {
 		dev_err(lwis_dev->dev, "Failed to allocate io_entries buffer\n");
@@ -305,7 +309,7 @@ static int copy_io_entries(struct lwis_device *lwis_dev, struct lwis_io_entries 
 	if (copy_from_user(io_entries, (void __user *)k_msg->io_entries, buf_size)) {
 		ret = -EFAULT;
 		kvfree(io_entries);
-		dev_err(lwis_dev->dev, "Failed to copy io_entries from userspace.");
+		dev_err(lwis_dev->dev, "Failed to copy io_entries from userspace.\n");
 		return ret;
 	}
 	*k_entries = io_entries;
