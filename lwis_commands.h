@@ -140,6 +140,7 @@ struct lwis_io_entry_rw_batch {
 	uint64_t offset;
 	size_t size_in_bytes;
 	uint8_t *buf;
+	bool is_offset_fixed;
 };
 
 // For io_entry modify types.

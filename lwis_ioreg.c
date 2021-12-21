@@ -255,7 +255,7 @@ static int ioreg_read_batch_internal(void __iomem *base, uint64_t offset, int va
 }
 
 static int ioreg_write_batch_internal(void __iomem *base, uint64_t offset, int value_bits,
-				      size_t size_in_bytes, uint8_t *buf)
+				      size_t size_in_bytes, uint8_t *buf, bool is_offset_fixed)
 {
 	int i;
 	uint8_t *addr = (uint8_t *)base + offset;
@@ -269,22 +269,29 @@ static int ioreg_write_batch_internal(void __iomem *base, uint64_t offset, int v
 	switch (value_bits) {
 	case 8:
 		for (i = 0; i < size_in_bytes; ++i) {
-			writeb_relaxed(*(buf + i), (void __iomem *)(addr + i));
+			writeb_relaxed(*(buf + i), is_offset_fixed ? (void __iomem *)(addr) :
+									   (void __iomem *)(addr + i));
 		}
 		break;
 	case 16:
 		for (i = 0; i < size_in_bytes; i += 2) {
-			writew_relaxed(*(uint16_t *)(buf + i), (void __iomem *)(addr + i));
+			writew_relaxed(*(uint16_t *)(buf + i), is_offset_fixed ?
+								       (void __iomem *)(addr) :
+									     (void __iomem *)(addr + i));
 		}
 		break;
 	case 32:
 		for (i = 0; i < size_in_bytes; i += 4) {
-			writel_relaxed(*(uint32_t *)(buf + i), (void __iomem *)(addr + i));
+			writel_relaxed(*(uint32_t *)(buf + i), is_offset_fixed ?
+								       (void __iomem *)(addr) :
+									     (void __iomem *)(addr + i));
 		}
 		break;
 	case 64:
 		for (i = 0; i < size_in_bytes; i += 8) {
-			writeq_relaxed(*(uint64_t *)(buf + i), (void __iomem *)(addr + i));
+			writeq_relaxed(*(uint64_t *)(buf + i), is_offset_fixed ?
+								       (void __iomem *)(addr) :
+									     (void __iomem *)(addr + i));
 		}
 		break;
 	default:
@@ -424,8 +431,8 @@ int lwis_ioreg_io_entry_rw(struct lwis_ioreg_device *ioreg_dev, struct lwis_io_e
 		}
 		ret = ioreg_write_batch_internal(block->base, entry->rw_batch.offset,
 						 ioreg_dev->base_dev.native_value_bitwidth,
-						 entry->rw_batch.size_in_bytes,
-						 entry->rw_batch.buf);
+						 entry->rw_batch.size_in_bytes, entry->rw_batch.buf,
+						 entry->rw_batch.is_offset_fixed);
 		if (ret) {
 			dev_err(ioreg_dev->base_dev.dev, "Invalid ioreg batch write at:\n");
 			dev_err(ioreg_dev->base_dev.dev, "Offset: 0x%08llx, Base: %pK\n",
