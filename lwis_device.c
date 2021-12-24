@@ -114,9 +114,6 @@ static int lwis_open(struct inode *node, struct file *fp)
 	/* Empty hash table for client enrolled buffers */
 	hash_init(lwis_client->enrolled_buffers);
 
-	/* Initialize the allocator */
-	lwis_allocator_init(lwis_dev);
-
 	/* Start transaction processor task */
 	lwis_transaction_init(lwis_client);
 
@@ -222,10 +219,6 @@ static int lwis_release(struct inode *node, struct file *fp)
 	dev_info(lwis_dev->dev, "Closing instance %d\n", iminor(node));
 
 	rc = lwis_release_client(lwis_client);
-
-	/* Release the allocator and its cache */
-	lwis_allocator_release(lwis_dev);
-
 	mutex_lock(&lwis_dev->client_lock);
 	/* Release power if client closed without power down called */
 	if (is_client_enabled && lwis_dev->enabled > 0) {

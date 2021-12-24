@@ -55,7 +55,7 @@ int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
 				   bool in_irq);
 int lwis_transaction_cancel(struct lwis_client *client, int64_t id);
 
-void lwis_transaction_free(struct lwis_device *lwis_dev, struct lwis_transaction *transaction);
+void lwis_transaction_free(struct lwis_transaction *transaction);
 
 /* Expects lwis_client->transaction_lock to be acquired before calling
  * the following functions. */

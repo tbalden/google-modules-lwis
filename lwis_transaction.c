@@ -19,7 +19,6 @@
 #include <linux/slab.h>
 #include <linux/workqueue.h>
 
-#include "lwis_allocator.h"
 #include "lwis_device.h"
 #include "lwis_event.h"
 #include "lwis_io_entry.h"
@@ -82,17 +81,16 @@ static void save_transaction_to_history(struct lwis_client *client,
 	}
 }
 
-void lwis_transaction_free(struct lwis_device *lwis_dev, struct lwis_transaction *transaction)
+void lwis_transaction_free(struct lwis_transaction *transaction)
 {
 	int i;
 
 	for (i = 0; i < transaction->info.num_io_entries; ++i) {
 		if (transaction->info.io_entries[i].type == LWIS_IO_ENTRY_WRITE_BATCH) {
-			lwis_allocator_free(lwis_dev, transaction->info.io_entries[i].rw_batch.buf);
-			transaction->info.io_entries[i].rw_batch.buf = NULL;
+			kvfree(transaction->info.io_entries[i].rw_batch.buf);
 		}
 	}
-	lwis_allocator_free(lwis_dev, transaction->info.io_entries);
+	kvfree(transaction->info.io_entries);
 	if (transaction->resp) {
 		kfree(transaction->resp);
 	}
@@ -257,14 +255,14 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 		kfree(transaction->resp);
 		kfree(transaction);
 	} else {
-		lwis_transaction_free(lwis_dev, transaction);
+		lwis_transaction_free(transaction);
 	}
 	LWIS_ATRACE_FUNC_END(lwis_dev);
 	return ret;
 }
 
-static void cancel_transaction(struct lwis_device *lwis_dev, struct lwis_transaction *transaction,
-			       int error_code, struct list_head *pending_events)
+static void cancel_transaction(struct lwis_transaction *transaction, int error_code,
+			       struct list_head *pending_events)
 {
 	struct lwis_transaction_info *info = &transaction->info;
 	struct lwis_transaction_response_header resp;
@@ -278,7 +276,7 @@ static void cancel_transaction(struct lwis_device *lwis_dev, struct lwis_transac
 		lwis_pending_event_push(pending_events, info->emit_error_event_id, &resp,
 					sizeof(resp));
 	}
-	lwis_transaction_free(lwis_dev, transaction);
+	lwis_transaction_free(transaction);
 }
 
 static void process_transactions_in_queue(struct lwis_client *client,
@@ -296,8 +294,8 @@ static void process_transactions_in_queue(struct lwis_client *client,
 		transaction = list_entry(it_tran, struct lwis_transaction, process_queue_node);
 		list_del(&transaction->process_queue_node);
 		if (transaction->resp->error_code) {
-			cancel_transaction(client->lwis_dev, transaction,
-					   transaction->resp->error_code, &pending_events);
+			cancel_transaction(transaction, transaction->resp->error_code,
+					   &pending_events);
 		} else {
 			spin_unlock_irqrestore(&client->transaction_lock, flags);
 			process_transaction(client, transaction, &pending_events, in_irq,
@@ -378,7 +376,7 @@ int lwis_transaction_client_flush(struct lwis_client *client)
 		list_for_each_safe (it_tran, it_tran_tmp, &it_evt_list->list) {
 			transaction = list_entry(it_tran, struct lwis_transaction, event_list_node);
 			list_del(&transaction->event_list_node);
-			cancel_transaction(client->lwis_dev, transaction, -ECANCELED, NULL);
+			cancel_transaction(transaction, -ECANCELED, NULL);
 		}
 		hash_del(&it_evt_list->node);
 		kfree(it_evt_list);
@@ -397,7 +395,7 @@ int lwis_transaction_client_flush(struct lwis_client *client)
 			transaction =
 				list_entry(it_tran, struct lwis_transaction, process_queue_node);
 			list_del(&transaction->process_queue_node);
-			cancel_transaction(client->lwis_dev, transaction, -ECANCELED, NULL);
+			cancel_transaction(transaction, -ECANCELED, NULL);
 		}
 	}
 	spin_unlock_irqrestore(&client->transaction_lock, flags);
@@ -449,7 +447,7 @@ int lwis_transaction_client_cleanup(struct lwis_client *client)
 		transaction = list_entry(it_tran, struct lwis_transaction, event_list_node);
 		list_del(&transaction->event_list_node);
 		if (transaction->resp->error_code || client->lwis_dev->enabled == 0) {
-			cancel_transaction(client->lwis_dev, transaction, -ECANCELED, NULL);
+			cancel_transaction(transaction, -ECANCELED, NULL);
 		} else {
 			spin_unlock_irqrestore(&client->transaction_lock, flags);
 			process_transaction(client, transaction, &pending_events, in_irq,

@@ -17,7 +17,6 @@
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 
-#include "lwis_allocator.h"
 #include "lwis_buffer.h"
 #include "lwis_commands.h"
 #include "lwis_device.h"
@@ -188,8 +187,7 @@ static int register_read(struct lwis_device *lwis_dev, struct lwis_io_entry *rea
 		/* Save the userspace buffer address */
 		user_buf = read_entry->rw_batch.buf;
 		/* Allocate read buffer */
-		read_entry->rw_batch.buf =
-			lwis_allocator_allocate(lwis_dev, read_entry->rw_batch.size_in_bytes);
+		read_entry->rw_batch.buf = kvmalloc(read_entry->rw_batch.size_in_bytes, GFP_KERNEL);
 		if (!read_entry->rw_batch.buf) {
 			dev_err_ratelimited(lwis_dev->dev,
 					    "Failed to allocate register read buffer\n");
@@ -227,8 +225,7 @@ static int register_read(struct lwis_device *lwis_dev, struct lwis_io_entry *rea
 
 reg_read_exit:
 	if (batch_mode) {
-		lwis_allocator_free(lwis_dev, read_entry->rw_batch.buf);
-		read_entry->rw_batch.buf = NULL;
+		kvfree(read_entry->rw_batch.buf);
 	}
 	return ret;
 }
@@ -245,7 +242,7 @@ static int register_write(struct lwis_device *lwis_dev, struct lwis_io_entry *wr
 		user_buf = write_entry->rw_batch.buf;
 		/* Allocate write buffer and copy contents from userspace */
 		write_entry->rw_batch.buf =
-			lwis_allocator_allocate(lwis_dev, write_entry->rw_batch.size_in_bytes);
+			kvmalloc(write_entry->rw_batch.size_in_bytes, GFP_KERNEL);
 		if (!write_entry->rw_batch.buf) {
 			dev_err_ratelimited(lwis_dev->dev,
 					    "Failed to allocate register write buffer\n");
@@ -272,8 +269,7 @@ static int register_write(struct lwis_device *lwis_dev, struct lwis_io_entry *wr
 
 reg_write_exit:
 	if (batch_mode) {
-		lwis_allocator_free(lwis_dev, write_entry->rw_batch.buf);
-		write_entry->rw_batch.buf = NULL;
+		kvfree(write_entry->rw_batch.buf);
 	}
 	return ret;
 }
@@ -313,14 +309,14 @@ static int copy_io_entries(struct lwis_device *lwis_dev, struct lwis_io_entries 
 		dev_err(lwis_dev->dev, "Failed to copy io_entries due to integer overflow.\n");
 		return -EINVAL;
 	}
-	io_entries = lwis_allocator_allocate(lwis_dev, buf_size);
+	io_entries = kvmalloc(buf_size, GFP_KERNEL);
 	if (!io_entries) {
 		dev_err(lwis_dev->dev, "Failed to allocate io_entries buffer\n");
 		return -ENOMEM;
 	}
 	if (copy_from_user(io_entries, (void __user *)k_msg->io_entries, buf_size)) {
 		ret = -EFAULT;
-		lwis_allocator_free(lwis_dev, io_entries);
+		kvfree(io_entries);
 		dev_err(lwis_dev->dev, "Failed to copy io_entries from userspace.\n");
 		return ret;
 	}
@@ -400,7 +396,7 @@ static int ioctl_reg_io(struct lwis_device *lwis_dev, struct lwis_io_entries *us
 
 reg_io_exit:
 	if (k_entries) {
-		lwis_allocator_free(lwis_dev, k_entries);
+		kvfree(k_entries);
 	}
 	return ret;
 }
@@ -721,7 +717,7 @@ static int ioctl_device_reset(struct lwis_client *lwis_client, struct lwis_io_en
 	spin_unlock_irqrestore(&lwis_dev->lock, flags);
 soft_reset_exit:
 	if (k_entries) {
-		lwis_allocator_free(lwis_dev, k_entries);
+		kvfree(k_entries);
 	}
 	return ret;
 }
@@ -911,7 +907,7 @@ static int construct_io_entry(struct lwis_client *client, struct lwis_io_entry *
 	struct lwis_device *lwis_dev = client->lwis_dev;
 
 	entry_size = num_io_entries * sizeof(struct lwis_io_entry);
-	k_entries = lwis_allocator_allocate(lwis_dev, entry_size);
+	k_entries = kvmalloc(entry_size, GFP_KERNEL);
 	if (!k_entries) {
 		dev_err(lwis_dev->dev, "Failed to allocate io entries\n");
 		return -ENOMEM;
@@ -930,8 +926,7 @@ static int construct_io_entry(struct lwis_client *client, struct lwis_io_entry *
 	for (i = 0; i < num_io_entries; ++i) {
 		if (k_entries[i].type == LWIS_IO_ENTRY_WRITE_BATCH) {
 			user_buf = k_entries[i].rw_batch.buf;
-			k_buf = lwis_allocator_allocate(lwis_dev,
-							k_entries[i].rw_batch.size_in_bytes);
+			k_buf = kvmalloc(k_entries[i].rw_batch.size_in_bytes, GFP_KERNEL);
 			if (!k_buf) {
 				dev_err_ratelimited(lwis_dev->dev,
 					"Failed to allocate io write buffer\n");
@@ -956,12 +951,11 @@ static int construct_io_entry(struct lwis_client *client, struct lwis_io_entry *
 error_free_buf:
 	for (i = 0; i <= last_buf_alloc_idx; ++i) {
 		if (k_entries[i].type == LWIS_IO_ENTRY_WRITE_BATCH) {
-			lwis_allocator_free(lwis_dev, k_entries[i].rw_batch.buf);
-			k_entries[i].rw_batch.buf = NULL;
+			kvfree(k_entries[i].rw_batch.buf);
 		}
 	}
 error_free_entries:
-	lwis_allocator_free(lwis_dev, k_entries);
+	kvfree(k_entries);
 	*io_entries = NULL;
 	return ret;
 }
@@ -990,8 +984,7 @@ static int construct_transaction(struct lwis_client *client,
 	}
 
 	ret = construct_io_entry(client, k_transaction->info.io_entries,
-				 k_transaction->info.num_io_entries,
-				 &k_transaction->info.io_entries);
+			k_transaction->info.num_io_entries, &k_transaction->info.io_entries);
 	if (ret) {
 		dev_err(lwis_dev->dev, "Failed to prepare lwis io entries for transaction\n");
 		goto error_free_transaction;
@@ -1030,7 +1023,7 @@ static int ioctl_transaction_submit(struct lwis_client *client,
 
 	if (ret) {
 		k_transaction_info.id = LWIS_ID_INVALID;
-		lwis_transaction_free(lwis_dev, k_transaction);
+		lwis_transaction_free(k_transaction);
 	}
 
 	if (copy_to_user((void __user *)msg, &k_transaction_info,
@@ -1064,7 +1057,7 @@ static int ioctl_transaction_replace(struct lwis_client *client,
 
 	if (ret) {
 		k_transaction_info.id = LWIS_ID_INVALID;
-		lwis_transaction_free(lwis_dev, k_transaction);
+		lwis_transaction_free(k_transaction);
 	}
 
 	if (copy_to_user((void __user *)msg, &k_transaction_info,
@@ -1122,8 +1115,7 @@ static int construct_periodic_io(struct lwis_client *client,
 	}
 
 	ret = construct_io_entry(client, k_periodic_io->info.io_entries,
-				 k_periodic_io->info.num_io_entries,
-				 &k_periodic_io->info.io_entries);
+			k_periodic_io->info.num_io_entries, &k_periodic_io->info.io_entries);
 	if (ret) {
 		dev_err(lwis_dev->dev, "Failed to prepare lwis io entries for periodic io\n");
 		goto error_free_periodic_io;
@@ -1159,7 +1151,7 @@ static int ioctl_periodic_io_submit(struct lwis_client *client,
 				 sizeof(struct lwis_periodic_io_info))) {
 			dev_err_ratelimited(lwis_dev->dev, "Failed to return info to userspace\n");
 		}
-		lwis_periodic_io_free(lwis_dev, k_periodic_io);
+		lwis_periodic_io_free(k_periodic_io);
 		return ret;
 	}
 

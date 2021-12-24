@@ -16,7 +16,6 @@
 #include <linux/slab.h>
 #include <linux/workqueue.h>
 
-#include "lwis_allocator.h"
 #include "lwis_event.h"
 #include "lwis_io_entry.h"
 #include "lwis_ioreg.h"
@@ -424,17 +423,16 @@ static int queue_periodic_io_locked(struct lwis_client *client,
 	return 0;
 }
 
-void lwis_periodic_io_free(struct lwis_device *lwis_dev, struct lwis_periodic_io *periodic_io)
+void lwis_periodic_io_free(struct lwis_periodic_io *periodic_io)
 {
 	int i;
 
 	for (i = 0; i < periodic_io->info.num_io_entries; ++i) {
 		if (periodic_io->info.io_entries[i].type == LWIS_IO_ENTRY_WRITE_BATCH) {
-			lwis_allocator_free(lwis_dev, periodic_io->info.io_entries[i].rw_batch.buf);
-			periodic_io->info.io_entries[i].rw_batch.buf = NULL;
+			kvfree(periodic_io->info.io_entries[i].rw_batch.buf);
 		}
 	}
-	lwis_allocator_free(lwis_dev, periodic_io->info.io_entries);
+	kvfree(periodic_io->info.io_entries);
 
 	/* resp may not be allocated before the periodic_io is successfully submitted */
 	if (periodic_io->resp) {
@@ -526,7 +524,7 @@ int lwis_periodic_io_client_flush(struct lwis_client *client)
 			periodic_io =
 				list_entry(it_period, struct lwis_periodic_io, timer_list_node);
 			list_del(it_period);
-			lwis_periodic_io_free(client->lwis_dev, periodic_io);
+			lwis_periodic_io_free(periodic_io);
 		}
 	}
 	spin_unlock_irqrestore(&client->periodic_io_lock, flags);
