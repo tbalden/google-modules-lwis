@@ -1097,6 +1097,11 @@ static int prepare_io_entry(struct lwis_client *client, struct lwis_io_entry *us
 	struct lwis_device *lwis_dev = client->lwis_dev;
 
 	entry_size = num_io_entries * sizeof(struct lwis_io_entry);
+	if (entry_size / sizeof(struct lwis_io_entry) != num_io_entries) {
+		dev_err(lwis_dev->dev, "Failed to prepare io entry due to integer overflow\n");
+		return -EINVAL;
+	}
+
 	k_entries = kvmalloc(entry_size, GFP_KERNEL);
 	if (!k_entries) {
 		dev_err(lwis_dev->dev, "Failed to allocate periodic io entries\n");

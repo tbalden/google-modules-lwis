@@ -378,6 +378,26 @@ static int prepare_response(struct lwis_client *client, struct lwis_periodic_io 
 		}
 	}
 
+	/* Check integer overflow.*/
+	if (info->batch_size != 0 && read_entries != 0 && read_buf_size != 0) {
+		if (SIZE_MAX / (sizeof(struct lwis_periodic_io_result) * info->batch_size) <
+			    read_entries ||
+		    SIZE_MAX / (read_entries * sizeof(struct lwis_periodic_io_result)) <
+			    info->batch_size ||
+		    SIZE_MAX / read_buf_size < info->batch_size ||
+		    SIZE_MAX - (read_entries * sizeof(struct lwis_periodic_io_result) *
+					info->batch_size +
+				read_buf_size * info->batch_size) <
+			    sizeof(struct lwis_periodic_io_response_header) ||
+		    SIZE_MAX - (read_entries * sizeof(struct lwis_periodic_io_result) *
+					info->batch_size +
+				sizeof(struct lwis_periodic_io_response_header)) <
+			    (read_buf_size * info->batch_size)) {
+			pr_err_ratelimited("Failed to prepare response due to integer overflow\n");
+			return -EINVAL;
+		}
+	}
+
 	/* Periodic io response payload consists of one response header and
 	 * batch_size of batches, each of which contains num_entries_per_period
 	 * pairs of lwis_periodic_io_result and its read_buf. */
@@ -427,10 +447,10 @@ void lwis_periodic_io_clean(struct lwis_periodic_io *periodic_io)
 	int i;
 	for (i = 0; i < periodic_io->info.num_io_entries; ++i) {
 		if (periodic_io->info.io_entries[i].type == LWIS_IO_ENTRY_WRITE_BATCH) {
-			kfree(periodic_io->info.io_entries[i].rw_batch.buf);
+			kvfree(periodic_io->info.io_entries[i].rw_batch.buf);
 		}
 	}
-	kfree(periodic_io->info.io_entries);
+	kvfree(periodic_io->info.io_entries);
 
 	/* resp may not be allocated before the periodic_io is successfully
 	 * submitted */
