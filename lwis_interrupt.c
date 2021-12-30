@@ -87,7 +87,7 @@ void lwis_interrupt_list_free(struct lwis_interrupt_list *list)
 int lwis_interrupt_get(struct lwis_interrupt_list *list, int index, char *name,
 		       struct platform_device *plat_dev)
 {
-	int irq;
+	int irq, rc;
 
 	if (!list || index < 0 || index >= list->count) {
 		return -EINVAL;
@@ -108,8 +108,10 @@ int lwis_interrupt_get(struct lwis_interrupt_list *list, int index, char *name,
 	list->irq[index].has_events = false;
 	list->irq[index].lwis_dev = list->lwis_dev;
 
-	request_irq(irq, lwis_interrupt_event_isr, IRQF_SHARED, list->irq[index].full_name,
-		    &list->irq[index]);
+	rc = request_irq(irq, lwis_interrupt_event_isr, IRQF_SHARED,
+			 list->irq[index].full_name, &list->irq[index]);
+	WARN(rc, "unable to request irq %d for %s (rc %d)\n",
+	     irq, list->irq[index].full_name, rc);
 
 	if (lwis_plaform_set_default_irq_affinity(list->irq[index].irq) != 0) {
 		dev_warn(list->lwis_dev->dev, "Interrupt %s cannot set affinity.\n",
