@@ -614,11 +614,14 @@ static int queue_transaction_locked(struct lwis_client *client,
 	if (info->trigger_event_id == LWIS_EVENT_ID_NONE) {
 		/* Immediate trigger. */
 		if (info->run_at_real_time) {
-			list_add_tail(&transaction->process_queue_node, &client->transaction_process_queue_tasklet);
+			list_add_tail(&transaction->process_queue_node,
+				      &client->transaction_process_queue_tasklet);
 			tasklet_schedule(&client->transaction_tasklet);
 		} else {
-			list_add_tail(&transaction->process_queue_node, &client->transaction_process_queue);
-			kthread_queue_work(&client->lwis_dev->transaction_worker, &client->transaction_work);
+			list_add_tail(&transaction->process_queue_node,
+				      &client->transaction_process_queue);
+			kthread_queue_work(&client->lwis_dev->transaction_worker,
+					   &client->transaction_work);
 		}
 	} else {
 		/* Trigger by event. */
@@ -777,7 +780,7 @@ int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
 	}
 	if (!list_empty(&client->transaction_process_queue)) {
 		kthread_queue_work(&client->lwis_dev->transaction_worker,
-				&client->transaction_work);
+				   &client->transaction_work);
 	}
 
 	spin_unlock_irqrestore(&client->transaction_lock, flags);

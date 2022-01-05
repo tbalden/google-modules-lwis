@@ -265,6 +265,8 @@ struct lwis_device {
 	/* Worker thread */
 	struct kthread_worker transaction_worker;
 	struct task_struct *transaction_worker_thread;
+	struct kthread_worker periodic_io_worker;
+	struct task_struct *periodic_io_worker_thread;
 };
 
 /*
@@ -303,11 +305,9 @@ struct lwis_client {
 	int64_t transaction_counter;
 	/* Hash table of hrtimer keyed by time out duration */
 	DECLARE_HASHTABLE(timer_list, PERIODIC_IO_HASH_BITS);
-	/* Workqueue variables for periodic io */
-	struct workqueue_struct *periodic_io_wq;
-	struct work_struct periodic_io_work;
 	/* Work item */
 	struct kthread_work transaction_work;
+	struct kthread_work periodic_io_work;
 	/* Spinlock used to synchronize access to periodic io data structs */
 	spinlock_t periodic_io_lock;
 	/* Queue of all periodic_io pending processing */

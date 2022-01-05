@@ -255,7 +255,8 @@ static int lwis_i2c_device_probe(struct platform_device *plat_dev)
 	}
 
 	/* Create an associated kworker thread */
-	ret = lwis_create_kthread_worker(&i2c_dev->base_dev, "lwis_i2c_kthread");
+	ret = lwis_create_kthread_workers(&i2c_dev->base_dev, "lwis_i2c_trans_kthread",
+					 "lwis_i2c_prd_io_kthread");
 	if (ret) {
 		dev_err(i2c_dev->base_dev.dev,"Failed to create lwis_i2c_kthread");
 		lwis_base_unprobe((struct lwis_device *)i2c_dev);

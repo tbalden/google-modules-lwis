@@ -94,14 +94,29 @@ const char *lwis_device_type_to_string(int32_t type)
 	}
 }
 
-int lwis_create_kthread_worker(struct lwis_device *dev, const char *transaction_worker_name)
+int lwis_create_kthread_workers(struct lwis_device *lwis_dev, const char *transaction_worker_name,
+			       const char *periodic_io_worker_name)
 {
-	kthread_init_worker(&dev->transaction_worker);
-	dev->transaction_worker_thread = kthread_run(kthread_worker_fn, &dev->transaction_worker,
-			transaction_worker_name);
-	if (IS_ERR(dev->transaction_worker_thread))
+	if (!lwis_dev) {
+		pr_err("lwis_create_kthread_workers: lwis_dev is NULL\n");
+		return -ENODEV;
+	}
+
+	kthread_init_worker(&lwis_dev->transaction_worker);
+	lwis_dev->transaction_worker_thread = kthread_run(kthread_worker_fn,
+			&lwis_dev->transaction_worker, transaction_worker_name);
+	if (IS_ERR(lwis_dev->transaction_worker_thread)) {
+		dev_err(lwis_dev->dev, "transaction kthread_run failed\n");
 		return -EINVAL;
+	}
+
+	kthread_init_worker(&lwis_dev->periodic_io_worker);
+	lwis_dev->periodic_io_worker_thread = kthread_run(kthread_worker_fn,
+			&lwis_dev->periodic_io_worker, periodic_io_worker_name);
+	if (IS_ERR(lwis_dev->periodic_io_worker_thread)) {
+		dev_err(lwis_dev->dev, "periodic_io kthread_run failed\n");
+		return -EINVAL;
+	}
 
 	return 0;
-
 }

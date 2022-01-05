@@ -65,10 +65,9 @@ static inline ktime_t lwis_get_time()
 }
 
 /*
- * lwis_create_kthread_worker: Creates a kthread worker associated with
- * this lwis device.
+ * lwis_create_kthread_workers: Creates kthread workers associated with this lwis device.
  */
-
-int lwis_create_kthread_worker(struct lwis_device *dev, const char *transaction_worker_name);
+int lwis_create_kthread_workers(struct lwis_device *lwis_dev, const char *transaction_worker_name,
+				const char *periodic_io_worker_name);
 
 #endif // LWIS_UTIL_H_
