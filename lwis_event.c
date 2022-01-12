@@ -24,6 +24,15 @@
 /* Exposes the device id embedded in the event id */
 #define EVENT_OWNER_DEVICE_ID(x) ((x >> LWIS_EVENT_ID_EVENT_CODE_LEN) & 0xFFFF)
 
+#define lwis_dev_err_ratelimited(dev, fmt, ...)					\
+	{									\
+		static int64_t timestamp = 0;					\
+		if (ktime_to_ns(lwis_get_time()) - timestamp > 200000000LL) {	\
+			dev_err(dev, fmt, ##__VA_ARGS__);			\
+			timestamp = ktime_to_ns(lwis_get_time());		\
+		}								\
+	}
+
 /*
  * lwis_client_event_state_find_locked: Looks through the provided client's
  * event state list and tries to find a lwis_client_event_state object with the
@@ -881,8 +890,7 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev, int64_t eve
 			}
 			ret = lwis_client_event_push_back(lwis_client, event);
 			if (ret) {
-				dev_err_ratelimited(
-					lwis_dev->dev,
+				lwis_dev_err_ratelimited(lwis_dev->dev,
 					"Failed to push event to queue: ID 0x%llx Counter %lld\n",
 					event_id, event_counter);
 				kfree(event);
@@ -917,9 +925,9 @@ int lwis_device_event_emit(struct lwis_device *lwis_dev, int64_t event_id, void 
 	ret = lwis_device_event_emit_impl(lwis_dev, event_id, payload, payload_size,
 					  &pending_events, in_irq);
 	if (ret) {
-		dev_err_ratelimited(lwis_dev->dev,
-				    "lwis_device_event_emit_impl failed: event ID 0x%llx\n",
-				    event_id);
+		lwis_dev_err_ratelimited(lwis_dev->dev,
+			"lwis_device_event_emit_impl failed: event ID 0x%llx\n",
+			event_id);
 		return ret;
 	}
 
@@ -1061,8 +1069,7 @@ void lwis_device_external_event_emit(struct lwis_device *lwis_dev, int64_t event
 			event->event_info.payload_size = 0;
 			event->event_info.payload_buffer = NULL;
 			if (lwis_client_event_push_back(lwis_client, event)) {
-				dev_err_ratelimited(
-					lwis_dev->dev,
+				lwis_dev_err_ratelimited(lwis_dev->dev,
 					"Failed to push event to queue: ID 0x%llx Counter %lld\n",
 					event_id, event_counter);
 				kfree(event);
@@ -1120,9 +1127,9 @@ void lwis_device_error_event_emit(struct lwis_device *lwis_dev, int64_t event_id
 			event->event_info.payload_buffer = NULL;
 		}
 		if (lwis_client_error_event_push_back(lwis_client, event)) {
-			dev_err_ratelimited(lwis_dev->dev,
-					    "Failed to push error event to queue: ID 0x%llx\n",
-					    event_id);
+			lwis_dev_err_ratelimited(lwis_dev->dev,
+				"Failed to push error event to queue: ID 0x%llx\n",
+				event_id);
 			kfree(event);
 			return;
 		}
