@@ -44,6 +44,7 @@ struct lwis_allocator_block_mgr {
 	struct lwis_allocator_block_pool pool_large;
 	/* Hash table of allocated buffers keyed by allocated addresses */
 	DECLARE_HASHTABLE(allocated_blocks, BUFFER_HASH_BITS);
+	int ref_count;
 };
 
 /*

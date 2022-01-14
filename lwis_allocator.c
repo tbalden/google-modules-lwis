@@ -150,9 +150,19 @@ allocator_get_block_pool(struct lwis_allocator_block_mgr *block_mgr, int idx)
 int lwis_allocator_init(struct lwis_device *lwis_dev)
 {
 	struct lwis_allocator_block_mgr *block_mgr;
+	unsigned long flags;
+
 	if (lwis_dev == NULL) {
 		dev_err(lwis_dev->dev, "lwis_dev is NULL\n");
 		return -EINVAL;
+	}
+
+	if (lwis_dev->block_mgr != NULL) {
+		block_mgr = lwis_dev->block_mgr;
+		spin_lock_irqsave(&block_mgr->lock, flags);
+		block_mgr->ref_count++;
+		spin_unlock_irqrestore(&block_mgr->lock, flags);
+		return 0;
 	}
 
 	block_mgr = kzalloc(sizeof(struct lwis_allocator_block_mgr), GFP_KERNEL);
@@ -160,7 +170,6 @@ int lwis_allocator_init(struct lwis_device *lwis_dev)
 		dev_err(lwis_dev->dev, "Allocate block_mgr failed\n");
 		return -ENOMEM;
 	}
-	lwis_dev->block_mgr = block_mgr;
 
 	/* Initialize mutex */
 	spin_lock_init(&block_mgr->lock);
@@ -178,6 +187,10 @@ int lwis_allocator_init(struct lwis_device *lwis_dev)
 	strlcpy(block_mgr->pool_512k.name, "lwis-block-512k", LWIS_MAX_NAME_STRING_LEN);
 	strlcpy(block_mgr->pool_large.name, "lwis-block-large", LWIS_MAX_NAME_STRING_LEN);
 
+	/* Initialize reference count */
+	block_mgr->ref_count = 1;
+
+	lwis_dev->block_mgr = block_mgr;
 	return 0;
 }
 
@@ -198,6 +211,12 @@ void lwis_allocator_release(struct lwis_device *lwis_dev)
 	}
 
 	spin_lock_irqsave(&block_mgr->lock, flags);
+	block_mgr->ref_count--;
+	if (block_mgr->ref_count > 0) {
+		spin_unlock_irqrestore(&block_mgr->lock, flags);
+		return;
+	}
+
 	allocator_block_pool_free_locked(lwis_dev, &block_mgr->pool_8k);
 	allocator_block_pool_free_locked(lwis_dev, &block_mgr->pool_16k);
 	allocator_block_pool_free_locked(lwis_dev, &block_mgr->pool_32k);
