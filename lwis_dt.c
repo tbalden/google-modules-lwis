@@ -815,11 +815,9 @@ error_parse_power_down_seqs:
 
 static int parse_pm_hibernation(struct lwis_device *lwis_dev)
 {
-	struct device *dev;
 	struct device_node *dev_node;
 
-	dev = &(lwis_dev->plat_dev->dev);
-	dev_node = dev->of_node;
+	dev_node = lwis_dev->plat_dev->dev.of_node;
 	lwis_dev->pm_hibernation = 1;
 
 	of_property_read_u32(dev_node, "pm-hibernation", &lwis_dev->pm_hibernation);
@@ -834,6 +832,18 @@ static int parse_access_mode(struct lwis_device *lwis_dev)
 	dev_node = lwis_dev->plat_dev->dev.of_node;
 
 	lwis_dev->is_read_only = of_property_read_bool(dev_node, "lwis,read-only");
+
+	return 0;
+}
+
+static int parse_thread_priority(struct lwis_device *lwis_dev)
+{
+	struct device_node *dev_node;
+
+	dev_node = lwis_dev->plat_dev->dev.of_node;
+	lwis_dev->adjust_thread_priority = 0;
+
+	of_property_read_u32(dev_node, "thread-priority", &lwis_dev->adjust_thread_priority);
 
 	return 0;
 }
@@ -939,6 +949,8 @@ int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 	}
 
 	parse_access_mode(lwis_dev);
+
+	parse_thread_priority(lwis_dev);
 
 	parse_bitwidths(lwis_dev);
 

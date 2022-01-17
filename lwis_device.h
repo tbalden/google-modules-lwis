@@ -247,6 +247,8 @@ struct lwis_device {
 	int pm_hibernation;
 	/* Is device read only */
 	bool is_read_only;
+	/* Adjust thread priority */
+	int adjust_thread_priority;
 };
 
 /*
