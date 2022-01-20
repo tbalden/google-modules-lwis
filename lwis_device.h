@@ -255,7 +255,8 @@ struct lwis_device {
 	/* Is device read only */
 	bool is_read_only;
 	/* Adjust thread priority */
-	int adjust_thread_priority;
+	u32 transaction_thread_priority;
+	u32 periodic_io_thread_priority;
 
 	/* LWIS allocator block manager */
 	struct lwis_allocator_block_mgr *block_mgr;

@@ -70,4 +70,10 @@ static inline ktime_t lwis_get_time()
 int lwis_create_kthread_workers(struct lwis_device *lwis_dev, const char *transaction_worker_name,
 				const char *periodic_io_worker_name);
 
+/*
+ * lwis_set_kthread_priority: Set kthread priority.
+ */
+int lwis_set_kthread_priority(struct lwis_device *lwis_dev, struct task_struct *task,
+			      u32 priority);
+
 #endif // LWIS_UTIL_H_

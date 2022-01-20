@@ -948,9 +948,13 @@ static int parse_thread_priority(struct lwis_device *lwis_dev)
 	struct device_node *dev_node;
 
 	dev_node = lwis_dev->plat_dev->dev.of_node;
-	lwis_dev->adjust_thread_priority = 0;
+	lwis_dev->transaction_thread_priority = 0;
+	lwis_dev->periodic_io_thread_priority = 0;
 
-	of_property_read_u32(dev_node, "thread-priority", &lwis_dev->adjust_thread_priority);
+	of_property_read_u32(dev_node, "transaction_thread_priority",
+			     &lwis_dev->transaction_thread_priority);
+	of_property_read_u32(dev_node, "periodic_io_thread_priority",
+			     &lwis_dev->periodic_io_thread_priority);
 
 	return 0;
 }

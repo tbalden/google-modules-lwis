@@ -20,8 +20,9 @@
 #include <linux/platform_device.h>
 #include <linux/pm.h>
 #include <linux/preempt.h>
-#include <linux/slab.h>
+#include <linux/sched.h>
 #include <linux/sched/types.h>
+#include <linux/slab.h>
 #include <uapi/linux/sched/types.h>
 
 #include "lwis_i2c.h"
@@ -240,7 +241,7 @@ static int lwis_i2c_device_probe(struct platform_device *plat_dev)
 	i2c_dev->base_dev.subscribe_ops = i2c_subscribe_ops;
 
 	/* Call the base device probe function */
-	ret = lwis_base_probe((struct lwis_device *)i2c_dev, plat_dev);
+	ret = lwis_base_probe(&i2c_dev->base_dev, plat_dev);
 	if (ret) {
 		pr_err("Error in lwis base probe\n");
 		goto error_probe;
@@ -250,7 +251,7 @@ static int lwis_i2c_device_probe(struct platform_device *plat_dev)
 	ret = lwis_i2c_device_setup(i2c_dev);
 	if (ret) {
 		dev_err(i2c_dev->base_dev.dev, "Error in i2c device initialization\n");
-		lwis_base_unprobe((struct lwis_device *)i2c_dev);
+		lwis_base_unprobe(&i2c_dev->base_dev);
 		goto error_probe;
 	}
 
@@ -259,8 +260,33 @@ static int lwis_i2c_device_probe(struct platform_device *plat_dev)
 					 "lwis_i2c_prd_io_kthread");
 	if (ret) {
 		dev_err(i2c_dev->base_dev.dev,"Failed to create lwis_i2c_kthread");
-		lwis_base_unprobe((struct lwis_device *)i2c_dev);
+		lwis_base_unprobe(&i2c_dev->base_dev);
 		goto error_probe;
+	}
+
+	if (i2c_dev->base_dev.transaction_thread_priority != 0) {
+		ret = lwis_set_kthread_priority(&i2c_dev->base_dev,
+			i2c_dev->base_dev.transaction_worker_thread,
+			i2c_dev->base_dev.transaction_thread_priority);
+		if (ret) {
+			dev_err(i2c_dev->base_dev.dev,
+				"Failed to set LWIS I2C transaction kthread priority (%d)",
+				ret);
+			lwis_base_unprobe(&i2c_dev->base_dev);
+			goto error_probe;
+		}
+	}
+	if (i2c_dev->base_dev.periodic_io_thread_priority != 0) {
+		ret = lwis_set_kthread_priority(&i2c_dev->base_dev,
+			i2c_dev->base_dev.periodic_io_worker_thread,
+			i2c_dev->base_dev.periodic_io_thread_priority);
+		if (ret) {
+			dev_err(i2c_dev->base_dev.dev,
+				"Failed to set LWIS I2C periodic io kthread priority (%d)",
+				ret);
+			lwis_base_unprobe(&i2c_dev->base_dev);
+			goto error_probe;
+		}
 	}
 
 	dev_info(i2c_dev->base_dev.dev, "I2C Device Probe: Success\n");
