@@ -1596,3 +1596,4 @@ module_exit(lwis_driver_exit);
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Google-ACMA");
 MODULE_DESCRIPTION("LWIS Base Device Driver");
+MODULE_IMPORT_NS(DMA_BUF);
