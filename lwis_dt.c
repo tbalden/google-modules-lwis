@@ -959,8 +959,6 @@ int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 {
 	struct device *dev;
 	struct device_node *dev_node;
-	struct property *iommus;
-	int iommus_len = 0;
 	const char *name_str;
 	int ret = 0;
 
@@ -1066,9 +1064,6 @@ int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 	parse_thread_priority(lwis_dev);
 
 	parse_bitwidths(lwis_dev);
-
-	iommus = of_find_property(dev_node, "iommus", &iommus_len);
-	lwis_dev->has_iommu = iommus && iommus_len;
 
 	lwis_dev->bts_scenario_name = NULL;
 	of_property_read_string(dev_node, "bts-scenario", &lwis_dev->bts_scenario_name);
