@@ -34,6 +34,12 @@ lwis-objs += platform/busan/lwis_platform_busan.o
 lwis-objs += platform/busan/lwis_platform_busan_dma.o
 endif
 
+# Casablanca specific files
+ifeq ($(CONFIG_SOC_ZUMA), y)
+lwis-objs += platform/casablanca/lwis_platform_casablanca.o
+lwis-objs += platform/casablanca/lwis_platform_casablanca_dma.o
+endif
+
 # Device tree specific file
 ifeq ($(CONFIG_OF), y)
 lwis-objs += lwis_dt.o
