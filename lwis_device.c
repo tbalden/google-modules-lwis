@@ -37,6 +37,7 @@
 #include "lwis_pinctrl.h"
 #include "lwis_platform.h"
 #include "lwis_transaction.h"
+#include "lwis_version.h"
 
 #ifdef CONFIG_OF
 #include "lwis_dt.h"
@@ -58,6 +59,7 @@ static int lwis_open(struct inode *node, struct file *fp);
 static int lwis_release(struct inode *node, struct file *fp);
 static long lwis_ioctl(struct file *fp, unsigned int type, unsigned long param);
 static unsigned int lwis_poll(struct file *fp, poll_table *wait);
+static ssize_t lwis_read(struct file *fp, char __user *user_buf, size_t count, loff_t *pos);
 
 static struct file_operations lwis_fops = {
 	.owner = THIS_MODULE,
@@ -65,6 +67,7 @@ static struct file_operations lwis_fops = {
 	.release = lwis_release,
 	.unlocked_ioctl = lwis_ioctl,
 	.poll = lwis_poll,
+	.read = lwis_read,
 };
 
 /*
@@ -84,7 +87,7 @@ static int lwis_open(struct inode *node, struct file *fp)
 		pr_err("No device %d found\n", iminor(node));
 		return -ENODEV;
 	}
-	dev_dbg(lwis_dev->dev, "Opening instance %d\n", iminor(node));
+	dev_info(lwis_dev->dev, "Opening instance %d\n", iminor(node));
 
 	lwis_client = kzalloc(sizeof(struct lwis_client), GFP_KERNEL);
 	if (!lwis_client) {
@@ -309,6 +312,26 @@ static unsigned int lwis_poll(struct file *fp, poll_table *wait)
 	}
 
 	return mask;
+}
+
+static ssize_t lwis_read(struct file *fp, char __user *user_buf, size_t count, loff_t *pos)
+{
+	int ret = 0;
+	/* Buffer to store information */
+	const size_t buffer_size = 8192;
+	char *buffer = kzalloc(buffer_size, GFP_KERNEL);
+	if (!buffer) {
+		pr_err("Failed to allocate read buffer\n");
+		return -ENOMEM;
+	}
+
+	lwis_get_feature_flags(buffer, buffer_size);
+
+	ret = simple_read_from_buffer(user_buf, count, pos, buffer, strlen(buffer));
+
+	kfree(buffer);
+
+	return ret;
 }
 
 static int lwis_base_setup(struct lwis_device *lwis_dev)
