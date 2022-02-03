@@ -1,5 +1,5 @@
 /*
- * Google LWIS GS101 Platform-Specific DMA Functions
+ * Google LWIS Anchorage Platform-Specific DMA Functions
  *
  * Copyright (c) 2020 Google, LLC
  *

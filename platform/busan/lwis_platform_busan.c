@@ -1,14 +1,11 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Google LWIS GS101 Platform-Specific Functions
+ * Google LWIS Busan Platform-Specific Functions
  *
- * Copyright (c) 2020 Google, LLC
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * Copyright (c) 2021 Google, LLC
  */
 
-#include "lwis_platform_gs101.h"
+#include "lwis_platform_busan.h"
 
 #include <linux/iommu.h>
 #include <linux/of.h>
@@ -149,7 +146,7 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 		}
 	}
 
-	if (lwis_dev->bts_scenario_name) {
+	if (lwis_dev->bts_index != BTS_UNSUPPORTED && lwis_dev->bts_scenario_name) {
 		lwis_dev->bts_scenario = bts_get_scenindex(lwis_dev->bts_scenario_name);
 		if (!lwis_dev->bts_scenario) {
 			dev_err(lwis_dev->dev, "Failed to get default camera BTS scenario.\n");
@@ -173,7 +170,7 @@ int lwis_platform_device_disable(struct lwis_device *lwis_dev)
 		return -ENODEV;
 	}
 
-	if (lwis_dev->bts_scenario_name) {
+	if (lwis_dev->bts_index != BTS_UNSUPPORTED && lwis_dev->bts_scenario_name) {
 		bts_del_scenario(lwis_dev->bts_scenario);
 	}
 
@@ -217,10 +214,8 @@ int lwis_platform_update_qos(struct lwis_device *lwis_dev, int value,
 		qos_class = PM_QOS_CAM_THROUGHPUT;
 		break;
 	case CLOCK_FAMILY_TNR:
-#if defined(CONFIG_SOC_GS101)
 		qos_req = &platform->pm_qos_tnr;
 		qos_class = PM_QOS_TNR_THROUGHPUT;
-#endif
 		break;
 	case CLOCK_FAMILY_MIF:
 		qos_req = &platform->pm_qos_mem;
@@ -283,11 +278,9 @@ int lwis_platform_remove_qos(struct lwis_device *lwis_dev)
 	if (exynos_pm_qos_request_active(&platform->pm_qos_cam)) {
 		exynos_pm_qos_remove_request(&platform->pm_qos_cam);
 	}
-#if defined(CONFIG_SOC_GS101)
 	if (exynos_pm_qos_request_active(&platform->pm_qos_tnr)) {
 		exynos_pm_qos_remove_request(&platform->pm_qos_tnr);
 	}
-#endif
 	return 0;
 }
 

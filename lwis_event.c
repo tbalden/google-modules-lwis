@@ -21,6 +21,18 @@
 /* Maximum number of pending events in the event queues */
 #define MAX_NUM_PENDING_EVENTS 2048
 
+/* Exposes the device id embedded in the event id */
+#define EVENT_OWNER_DEVICE_ID(x) ((x >> LWIS_EVENT_ID_EVENT_CODE_LEN) & 0xFFFF)
+
+#define lwis_dev_err_ratelimited(dev, fmt, ...)					\
+	{									\
+		static int64_t timestamp = 0;					\
+		if (ktime_to_ns(lwis_get_time()) - timestamp > 200000000LL) {	\
+			dev_err(dev, fmt, ##__VA_ARGS__);			\
+			timestamp = ktime_to_ns(lwis_get_time());		\
+		}								\
+	}
+
 /*
  * lwis_client_event_state_find_locked: Looks through the provided client's
  * event state list and tries to find a lwis_client_event_state object with the
@@ -262,27 +274,16 @@ struct lwis_device_event_state *lwis_device_event_state_find_or_create(struct lw
 	return state;
 }
 
-static int lwis_client_event_get_trigger_device_id(int64_t event_id)
-{
-	return (event_id >> LWIS_EVENT_ID_EVENT_CODE_LEN) & 0xFFFF;
-}
-
 static int lwis_client_event_subscribe(struct lwis_client *lwis_client, int64_t trigger_event_id)
 {
 	int ret = 0;
 	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
 	struct lwis_device *trigger_device;
-	int trigger_device_id = lwis_client_event_get_trigger_device_id(trigger_event_id);
+	int trigger_device_id = EVENT_OWNER_DEVICE_ID(trigger_event_id);
 
 	/* Check if top device probe failed */
 	if (lwis_dev->top_dev == NULL) {
 		dev_err(lwis_dev->dev, "Top device is null\n");
-		return -EINVAL;
-	}
-
-	if ((trigger_event_id & LWIS_TRANSACTION_EVENT_FLAG) ||
-	    (trigger_event_id & LWIS_TRANSACTION_FAILURE_EVENT_FLAG)) {
-		dev_err(lwis_dev->dev, "Not support SW event subscription\n");
 		return -EINVAL;
 	}
 
@@ -293,16 +294,17 @@ static int lwis_client_event_subscribe(struct lwis_client *lwis_client, int64_t 
 		return -EINVAL;
 	}
 
-	/* Create event state to trigger/receiver device
+	/* Create event state to trigger/subscriber device
 	 * Because of driver initialize in user space is sequential, it's
-	 * possible that receiver device subscribe an event before trigger
+	 * possible that subscriber device subscribe an event before trigger
 	 * device set it up
 	 */
 	if (IS_ERR_OR_NULL(lwis_device_event_state_find_or_create(lwis_dev, trigger_event_id)) ||
 	    IS_ERR_OR_NULL(lwis_client_event_state_find_or_create(lwis_client, trigger_event_id)) ||
 	    IS_ERR_OR_NULL(
 		    lwis_device_event_state_find_or_create(trigger_device, trigger_event_id))) {
-		dev_err(lwis_dev->dev, "Failed to add event id 0x%llx to trigger/receiver device\n",
+		dev_err(lwis_dev->dev,
+			"Failed to add event id 0x%llx to trigger/subscriber device\n",
 			trigger_event_id);
 
 		return -EINVAL;
@@ -345,6 +347,29 @@ static int lwis_client_event_unsubscribe(struct lwis_client *lwis_client, int64_
 	return ret;
 }
 
+static int check_event_control_flags(struct lwis_client *lwis_client, int64_t event_id,
+				     uint64_t old_flags, uint64_t new_flags)
+{
+	if (EVENT_OWNER_DEVICE_ID(event_id) == lwis_client->lwis_dev->id) {
+		if (event_id & LWIS_HW_IRQ_EVENT_FLAG &&
+		    (new_flags & LWIS_EVENT_CONTROL_FLAG_QUEUE_ENABLE) &&
+		    !(new_flags & LWIS_EVENT_CONTROL_FLAG_IRQ_ENABLE)) {
+			dev_err(lwis_client->lwis_dev->dev,
+				"QUEUE_ENABLE without IRQ_ENABLE is not allowed for HW event: 0x%llx\n",
+				event_id);
+			return -EINVAL;
+		}
+	} else {
+		/* b/187758268 for fixing the hard LOCKUP when running LWIS cross-device tests. */
+		if (lwis_client->lwis_dev->type == DEVICE_TYPE_TOP) {
+			dev_err(lwis_client->lwis_dev->dev,
+				"Disallow top device being the subscriber device\n");
+			return -EPERM;
+		}
+	}
+	return 0;
+}
+
 int lwis_client_event_control_set(struct lwis_client *lwis_client,
 				  const struct lwis_event_control *control)
 {
@@ -362,6 +387,12 @@ int lwis_client_event_control_set(struct lwis_client *lwis_client,
 	old_flags = state->event_control.flags;
 	new_flags = control->flags;
 	if (old_flags != new_flags) {
+		ret = check_event_control_flags(lwis_client, control->event_id, old_flags,
+						new_flags);
+		if (ret) {
+			return ret;
+		}
+
 		state->event_control.flags = new_flags;
 		ret = lwis_device_event_flags_updated(lwis_client->lwis_dev, control->event_id,
 						      old_flags, new_flags);
@@ -371,17 +402,7 @@ int lwis_client_event_control_set(struct lwis_client *lwis_client,
 			return ret;
 		}
 
-		if (lwis_client_event_get_trigger_device_id(control->event_id) !=
-		    lwis_client->lwis_dev->id) {
-			/* b/187758268 for fixing the hard LOCKUP
-			 * when running LWIS cross-device tests.
-			 */
-			if (lwis_client->lwis_dev->type == DEVICE_TYPE_TOP) {
-				dev_err(lwis_client->lwis_dev->dev,
-					"Disallow top device being the receiver device\n");
-				return -EPERM;
-			}
-
+		if (EVENT_OWNER_DEVICE_ID(control->event_id) != lwis_client->lwis_dev->id) {
 			if (new_flags != 0) {
 				ret = lwis_client_event_subscribe(lwis_client, control->event_id);
 				if (ret) {
@@ -869,8 +890,7 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev, int64_t eve
 			}
 			ret = lwis_client_event_push_back(lwis_client, event);
 			if (ret) {
-				dev_err_ratelimited(
-					lwis_dev->dev,
+				lwis_dev_err_ratelimited(lwis_dev->dev,
 					"Failed to push event to queue: ID 0x%llx Counter %lld\n",
 					event_id, event_counter);
 				kfree(event);
@@ -905,9 +925,9 @@ int lwis_device_event_emit(struct lwis_device *lwis_dev, int64_t event_id, void 
 	ret = lwis_device_event_emit_impl(lwis_dev, event_id, payload, payload_size,
 					  &pending_events, in_irq);
 	if (ret) {
-		dev_err_ratelimited(lwis_dev->dev,
-				    "lwis_device_event_emit_impl failed: event ID 0x%llx\n",
-				    event_id);
+		lwis_dev_err_ratelimited(lwis_dev->dev,
+			"lwis_device_event_emit_impl failed: event ID 0x%llx\n",
+			event_id);
 		return ret;
 	}
 
@@ -1049,8 +1069,7 @@ void lwis_device_external_event_emit(struct lwis_device *lwis_dev, int64_t event
 			event->event_info.payload_size = 0;
 			event->event_info.payload_buffer = NULL;
 			if (lwis_client_event_push_back(lwis_client, event)) {
-				dev_err_ratelimited(
-					lwis_dev->dev,
+				lwis_dev_err_ratelimited(lwis_dev->dev,
 					"Failed to push event to queue: ID 0x%llx Counter %lld\n",
 					event_id, event_counter);
 				kfree(event);
@@ -1108,9 +1127,9 @@ void lwis_device_error_event_emit(struct lwis_device *lwis_dev, int64_t event_id
 			event->event_info.payload_buffer = NULL;
 		}
 		if (lwis_client_error_event_push_back(lwis_client, event)) {
-			dev_err_ratelimited(lwis_dev->dev,
-					    "Failed to push error event to queue: ID 0x%llx\n",
-					    event_id);
+			lwis_dev_err_ratelimited(lwis_dev->dev,
+				"Failed to push error event to queue: ID 0x%llx\n",
+				event_id);
 			kfree(event);
 			return;
 		}

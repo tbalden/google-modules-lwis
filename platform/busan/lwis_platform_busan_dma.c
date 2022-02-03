@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0-only */
 /*
- * Google LWIS GS201 Platform-Specific DMA Functions
+ * Google LWIS Busan Platform-Specific DMA Functions
  *
  * Copyright (c) 2021 Google, LLC
  */

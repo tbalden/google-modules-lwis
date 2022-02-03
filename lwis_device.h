@@ -51,6 +51,11 @@ struct lwis_device;
 /* Forward declaration of a platform specific struct used by platform funcs */
 struct lwis_platform;
 
+/* Forward declaration of lwis allocator block manager */
+struct lwis_allocator_block_mgr;
+int lwis_allocator_init(struct lwis_device *lwis_dev);
+void lwis_allocator_release(struct lwis_device *lwis_dev);
+
 /*
  *  struct lwis_core
  *  This struct applies to all LWIS devices that are defined in the
@@ -105,12 +110,12 @@ struct lwis_device_subclass_operations {
  * Top device should be the only device to implement it.
  */
 struct lwis_event_subscribe_operations {
-	/* Subscribe an event for receiver device */
+	/* Subscribe an event for subscriber device */
 	int (*subscribe_event)(struct lwis_device *lwis_dev, int64_t trigger_event_id,
-			       int trigger_device_id, int receiver_device_id);
-	/* Unsubscribe an event for receiver device */
+			       int trigger_device_id, int subscriber_device_id);
+	/* Unsubscribe an event for subscriber device */
 	int (*unsubscribe_event)(struct lwis_device *lwis_dev, int64_t trigger_event_id,
-				 int receiver_device_id);
+				 int subscriber_device_id);
 	/* Notify subscriber when an event is happening */
 	void (*notify_event_subscriber)(struct lwis_device *lwis_dev, int64_t trigger_event_id,
 					int64_t trigger_event_count,
@@ -242,9 +247,18 @@ struct lwis_device {
 	struct lwis_device_power_sequence_list *power_down_sequence;
 	/* GPIOs list */
 	struct lwis_gpios_list *gpios_list;
+	/* GPIO interrupts list */
+	struct lwis_gpios_info irq_gpios_info;
 
 	/* Power management hibernation state of the device */
 	int pm_hibernation;
+	/* Is device read only */
+	bool is_read_only;
+	/* Adjust thread priority */
+	int adjust_thread_priority;
+
+	/* LWIS allocator block manager */
+	struct lwis_allocator_block_mgr *block_mgr;
 };
 
 /*
@@ -314,11 +328,6 @@ int lwis_base_probe(struct lwis_device *lwis_dev, struct platform_device *plat_d
 void lwis_base_unprobe(struct lwis_device *unprobe_lwis_dev);
 
 /*
- * Find LWIS top device
- */
-struct lwis_device *lwis_find_top_dev(void);
-
-/*
  * Find LWIS device by id
  */
 struct lwis_device *lwis_find_dev_by_id(int dev_id);
@@ -360,5 +369,11 @@ void lwis_dev_power_seq_list_free(struct lwis_device_power_sequence_list *list);
  *  Print lwis_device_power_sequence_list content
  */
 void lwis_dev_power_seq_list_print(struct lwis_device_power_sequence_list *list);
+
+/*
+ * lwis_device_info_dump:
+ * Use the customized function handle to print information from each device registered in LWIS.
+ */
+void lwis_device_info_dump(const char *name, void (*func)(struct lwis_device *));
 
 #endif /* LWIS_DEVICE_H_ */
