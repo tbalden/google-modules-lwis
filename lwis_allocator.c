@@ -235,7 +235,7 @@ void *lwis_allocator_allocate(struct lwis_device *lwis_dev, size_t size)
 	struct lwis_allocator_block_mgr *block_mgr;
 	struct lwis_allocator_block_pool *block_pool;
 	struct lwis_allocator_block *block;
-	uint idx;
+	uint32_t idx;
 	size_t block_size;
 	unsigned long flags;
 
@@ -250,6 +250,18 @@ void *lwis_allocator_allocate(struct lwis_device *lwis_dev, size_t size)
 	}
 
 	/*
+	 * Linux already has slab allocator to cache the allocated memory within a page.
+	 * The default page size is 4K. We can leverage linux's slab implementation for
+	 * small size memory recycling.
+	 */
+	if (size <= 4 * 1024) {
+		return kmalloc(size, GFP_KERNEL);
+	}
+
+	/*
+	   fls() has better performance profile, it's currently used to mimic the
+	   behavior of kmalloc_index().
+
 	   kmalloc_index() return value as following:
 	     if (size <=          8) return 3;
 	     if (size <=         16) return 4;
@@ -275,21 +287,16 @@ void *lwis_allocator_allocate(struct lwis_device *lwis_dev, size_t size)
 	     if (size <=  16 * 1024 * 1024) return 24;
 	     if (size <=  32 * 1024 * 1024) return 25;
 	*/
-	idx = kmalloc_index(size);
+	idx = fls(size - 1);
 
 	/*
-	 * Linux already has slab allocator to cache the allocated memory within a page.
-	 * The default page size is 4K. We can leverage linux's slab implementation for
-	 * small size memory recycling. For the large size memory allocation, we usually
-	 * use kvmalloc() to allocate the memory, but kvmalloc() does not take advantage
-	 * of slab. For this case, we define several memory pools and recycle to use
-	 * these memory blocks. For the size large than 512K, we do not have such use
-	 * case yet. In current implementation, I do not cache it due to prevent keeping
-	 * too much unused memory on hand.
+	 * For the large size memory allocation, we usually use kvmalloc() to allocate
+	 * the memory, but kvmalloc() does not take advantage of slab. For this case,
+	 * we define several memory pools and recycle to use these memory blocks. For the
+	 * size large than 512K, we do not have such use case yet. In current
+	 * implementation, I do not cache it due to prevent keeping too much unused
+	 * memory on hand.
 	 */
-	if (idx <= 12) {
-		return kmalloc(size, GFP_KERNEL);
-	}
 	if (idx > 19) {
 		block = kmalloc(sizeof(struct lwis_allocator_block), GFP_KERNEL);
 		if (block == NULL) {
