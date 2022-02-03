@@ -89,6 +89,7 @@ int lwis_interrupt_get(struct lwis_interrupt_list *list, int index, char *name,
 		       struct platform_device *plat_dev)
 {
 	int irq;
+	int ret = 0;
 
 	if (!list || index < 0 || index >= list->count) {
 		return -EINVAL;
@@ -109,8 +110,12 @@ int lwis_interrupt_get(struct lwis_interrupt_list *list, int index, char *name,
 	list->irq[index].has_events = false;
 	list->irq[index].lwis_dev = list->lwis_dev;
 
-	request_irq(irq, lwis_interrupt_event_isr, IRQF_SHARED, list->irq[index].full_name,
-		    &list->irq[index]);
+	ret = request_irq(irq, lwis_interrupt_event_isr, IRQF_SHARED, list->irq[index].full_name,
+			  &list->irq[index]);
+	if (ret) {
+		dev_err(list->lwis_dev->dev, "Failed to request IRQ %d\n", irq);
+		return ret;
+	}
 
 	if (lwis_plaform_set_default_irq_affinity(list->irq[index].irq) != 0) {
 		dev_warn(list->lwis_dev->dev, "Interrupt %s cannot set affinity.\n",
@@ -123,6 +128,8 @@ int lwis_interrupt_get(struct lwis_interrupt_list *list, int index, char *name,
 int lwis_interrupt_get_gpio_irq(struct lwis_interrupt_list *list, int index, char *name,
 				int gpio_irq)
 {
+	int ret = 0;
+
 	if (!list || index < 0 || index >= list->count || gpio_irq <= 0) {
 		return -EINVAL;
 	}
@@ -136,8 +143,12 @@ int lwis_interrupt_get_gpio_irq(struct lwis_interrupt_list *list, int index, cha
 	list->irq[index].has_events = false;
 	list->irq[index].lwis_dev = list->lwis_dev;
 
-	request_irq(gpio_irq, lwis_interrupt_gpios_event_isr, IRQF_SHARED,
-		    list->irq[index].full_name, &list->irq[index]);
+	ret = request_irq(gpio_irq, lwis_interrupt_gpios_event_isr, IRQF_SHARED,
+			  list->irq[index].full_name, &list->irq[index]);
+	if (ret) {
+		dev_err(list->lwis_dev->dev, "Failed to request GPIO IRQ\n");
+		return ret;
+	}
 
 	if (lwis_plaform_set_default_irq_affinity(list->irq[index].irq) != 0) {
 		dev_warn(list->lwis_dev->dev, "Interrupt %s cannot set affinity.\n",
