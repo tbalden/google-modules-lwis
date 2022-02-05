@@ -566,9 +566,10 @@ static int ioctl_device_enable(struct lwis_client *lwis_client)
 		goto error_locked;
 	}
 
-	/* Clear event queue to make sure there is no stale event from
+	/* Clear event queues to make sure there is no stale event from
 	 * previous session */
 	lwis_client_event_queue_clear(lwis_client);
+	lwis_client_error_event_queue_clear(lwis_client);
 
 	ret = lwis_dev_power_up_locked(lwis_dev);
 	if (ret < 0) {
@@ -688,10 +689,11 @@ static int ioctl_device_reset(struct lwis_client *lwis_client, struct lwis_io_en
 		goto soft_reset_exit;
 	}
 
-	/* Clear event states, event queue and transactions for this client */
+	/* Clear event states, event queues and transactions for this client */
 	mutex_lock(&lwis_dev->client_lock);
 	lwis_client_event_states_clear(lwis_client);
 	lwis_client_event_queue_clear(lwis_client);
+	lwis_client_error_event_queue_clear(lwis_client);
 	device_enabled = lwis_dev->enabled;
 	mutex_unlock(&lwis_dev->client_lock);
 
