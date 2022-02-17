@@ -228,6 +228,7 @@ struct lwis_event_info {
 
 #define LWIS_EVENT_CONTROL_FLAG_IRQ_ENABLE (1ULL << 0)
 #define LWIS_EVENT_CONTROL_FLAG_QUEUE_ENABLE (1ULL << 1)
+#define LWIS_EVENT_CONTROL_FLAG_IRQ_ENABLE_ONCE (1ULL << 2)
 
 struct lwis_event_control {
 	// IOCTL Inputs
