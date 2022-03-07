@@ -13,6 +13,7 @@
 #include "lwis_device_top.h"
 #include "lwis_event.h"
 #include "lwis_init.h"
+#include "lwis_util.h"
 
 #include <linux/device.h>
 #include <linux/init.h>
@@ -477,7 +478,7 @@ static int lwis_top_device_probe(struct platform_device *plat_dev)
 	top_dev->base_dev.subscribe_ops = top_subscribe_ops;
 
 	/* Call the base device probe function */
-	ret = lwis_base_probe((struct lwis_device *)top_dev, plat_dev);
+	ret = lwis_base_probe(&top_dev->base_dev, plat_dev);
 	if (ret) {
 		pr_err("Error in lwis base probe\n");
 		goto error_probe;
@@ -487,11 +488,20 @@ static int lwis_top_device_probe(struct platform_device *plat_dev)
 	ret = lwis_top_device_setup(top_dev);
 	if (ret) {
 		dev_err(top_dev->base_dev.dev, "Error in top device initialization\n");
-		lwis_base_unprobe((struct lwis_device *)top_dev);
+		lwis_base_unprobe(&top_dev->base_dev);
 		goto error_probe;
 	}
 
 	lwis_top_event_subscribe_init(top_dev);
+
+	/* Create associated kworker threads */
+	ret = lwis_create_kthread_workers(&top_dev->base_dev, "lwis_top_trans_kthread",
+					 "lwis_top_prd_io_kthread");
+	if (ret) {
+		dev_err(top_dev->base_dev.dev, "Failed to create lwis_top_kthread");
+		lwis_base_unprobe(&top_dev->base_dev);
+		goto error_probe;
+	}
 
 	return 0;
 
