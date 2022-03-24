@@ -179,13 +179,53 @@ lwis_interrupt_get_single_event_info_locked(struct lwis_interrupt *irq, int64_t 
 	return NULL;
 }
 
+static int lwis_interrupt_set_mask(struct lwis_interrupt *irq, int int_reg_bit, bool is_set)
+{
+	int ret = 0;
+	uint64_t mask_value = 0;
+
+	if (!irq) {
+		pr_err("irq is NULL.\n");
+		return -EINVAL;
+	}
+
+	/* Read the mask register */
+	ret = lwis_device_single_register_read(irq->lwis_dev, irq->irq_reg_bid, irq->irq_mask_reg,
+					       &mask_value, irq->irq_reg_access_size);
+	if (ret) {
+		pr_err("Failed to read IRQ mask register: %d\n", ret);
+		mutex_unlock(&irq->lwis_dev->reg_rw_lock);
+		return ret;
+	}
+
+	/* Unmask the interrupt */
+	if (is_set) {
+		mask_value |= (1ULL << int_reg_bit);
+	} else {
+		mask_value &= ~(1ULL << int_reg_bit);
+	}
+
+	/* Write the mask register */
+	ret = lwis_device_single_register_write(irq->lwis_dev, irq->irq_reg_bid, irq->irq_mask_reg,
+						mask_value, irq->irq_reg_access_size);
+	if (ret) {
+		pr_err("Failed to write IRQ mask register: %d\n", ret);
+		return ret;
+	}
+
+	return ret;
+}
+
 static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 {
 	int ret;
 	struct lwis_interrupt *irq = (struct lwis_interrupt *)data;
+	struct lwis_client_event_state *event_state;
 	struct lwis_single_event_info *event;
 	struct list_head *p;
 	uint64_t source_value, reset_value = 0;
+	struct lwis_client *lwis_client;
+	struct list_head *t, *n;
 #ifdef LWIS_INTERRUPT_DEBUG
 	uint64_t mask_value;
 #endif
@@ -231,6 +271,23 @@ static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 				dev_err_ratelimited(irq->lwis_dev->dev,
 						    "Caught critical IRQ(%s) event(0x%llx)\n",
 						    irq->name, event->event_id);
+			}
+			/* If enabled once, set interrupt mask to false */
+			list_for_each_safe (t, n, &irq->lwis_dev->clients) {
+				lwis_client = list_entry(t, struct lwis_client, node);
+				hash_for_each_possible (lwis_client->event_states, event_state,
+							node, event->event_id) {
+					if (event_state->event_control.event_id ==
+						    event->event_id &&
+					    event_state->event_control.flags &
+						    LWIS_EVENT_CONTROL_FLAG_IRQ_ENABLE_ONCE) {
+						dev_err(irq->lwis_dev->dev,
+							"IRQ(%s) event(0x%llx) enabled once\n",
+							irq->name, event->event_id);
+						lwis_interrupt_set_mask(irq, event->int_reg_bit,
+									false);
+					}
+				}
 			}
 		}
 
@@ -422,42 +479,6 @@ int lwis_interrupt_set_gpios_event_info(struct lwis_interrupt_list *list, int in
 	return 0;
 }
 
-static int lwis_interrupt_set_mask(struct lwis_interrupt *irq, int int_reg_bit, bool is_set)
-{
-	int ret = 0;
-	uint64_t mask_value = 0;
-
-	if (!irq) {
-		pr_err("irq is NULL.\n");
-		return -EINVAL;
-	}
-
-	/* Read the mask register */
-	ret = lwis_device_single_register_read(irq->lwis_dev, irq->irq_reg_bid, irq->irq_mask_reg,
-					       &mask_value, irq->irq_reg_access_size);
-	if (ret) {
-		pr_err("Failed to read IRQ mask register: %d\n", ret);
-		mutex_unlock(&irq->lwis_dev->reg_rw_lock);
-		return ret;
-	}
-
-	/* Unmask the interrupt */
-	if (is_set) {
-		mask_value |= (1ULL << int_reg_bit);
-	} else {
-		mask_value &= ~(1ULL << int_reg_bit);
-	}
-
-	/* Write the mask register */
-	ret = lwis_device_single_register_write(irq->lwis_dev, irq->irq_reg_bid, irq->irq_mask_reg,
-						mask_value, irq->irq_reg_access_size);
-	if (ret) {
-		pr_err("Failed to write IRQ mask register: %d\n", ret);
-		return ret;
-	}
-
-	return ret;
-}
 static int lwis_interrupt_single_event_enable_locked(struct lwis_interrupt *irq,
 						     struct lwis_single_event_info *event,
 						     bool enabled)

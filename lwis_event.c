@@ -911,20 +911,6 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev, int64_t eve
 				 "Failed to process transactions: Event ID: 0x%llx Counter: %lld\n",
 				 event_id, event_counter);
 		}
-		if (!IS_ERR_OR_NULL(client_event_state)) {
-			if (client_event_state->event_control.flags &
-			    LWIS_EVENT_CONTROL_FLAG_IRQ_ENABLE_ONCE) {
-				ret = lwis_device_event_flags_updated(
-					lwis_dev, event_id, client_event_state->event_control.flags,
-					0);
-				if (ret) {
-					dev_err(lwis_dev->dev,
-						"Updating device flags failed: %d Event ID: 0x%llx\n",
-						ret, event_id);
-					return ret;
-				}
-			}
-		}
 	}
 
 	return 0;
