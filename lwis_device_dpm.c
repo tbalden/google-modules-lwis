@@ -127,7 +127,7 @@ int lwis_dpm_update_clock(struct lwis_device *lwis_dev, struct lwis_clk_setting 
 
 	for (i = 0; i < num_settings; ++i) {
 		clk_index = clk_settings[i].clk_index;
-		if (clk_index >= lwis_dev->clocks->count) {
+		if (clk_index < 0 || clk_index >= lwis_dev->clocks->count) {
 			dev_err(lwis_dev->dev, "%s clk index %d is invalid\n", lwis_dev->name,
 				clk_index);
 			ret = -EINVAL;
