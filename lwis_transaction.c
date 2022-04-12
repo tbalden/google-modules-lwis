@@ -349,6 +349,23 @@ int lwis_transaction_clear(struct lwis_client *client)
 	return 0;
 }
 
+static void cancel_all_transactions_in_queue_locked(struct lwis_client *client,
+					  struct list_head *transaction_queue)
+{
+	struct lwis_transaction *transaction;
+	struct list_head *it_tran, *it_tran_tmp;
+
+	if (!list_empty(transaction_queue)) {
+		dev_warn(client->lwis_dev->dev, "Still transaction entries in process queue\n");
+		list_for_each_safe (it_tran, it_tran_tmp, transaction_queue) {
+			transaction =
+				list_entry(it_tran, struct lwis_transaction, process_queue_node);
+			list_del(&transaction->process_queue_node);
+			cancel_transaction(client->lwis_dev, transaction, -ECANCELED, NULL);
+		}
+	}
+}
+
 int lwis_transaction_client_flush(struct lwis_client *client)
 {
 	unsigned long flags;
@@ -382,18 +399,18 @@ int lwis_transaction_client_flush(struct lwis_client *client)
 	if (client->lwis_dev->transaction_worker_thread)
 		kthread_flush_worker(&client->lwis_dev->transaction_worker);
 
+	/* Wait for tasklet to complete in-progress transactions and disable. */
+	tasklet_disable(&client->transaction_tasklet);
+
 	spin_lock_irqsave(&client->transaction_lock, flags);
-	/* This shouldn't happen after drain_workqueue, but check anyway. */
-	if (!list_empty(&client->transaction_process_queue)) {
-		dev_warn(client->lwis_dev->dev, "Still transaction entries in process queue\n");
-		list_for_each_safe (it_tran, it_tran_tmp, &client->transaction_process_queue) {
-			transaction =
-				list_entry(it_tran, struct lwis_transaction, process_queue_node);
-			list_del(&transaction->process_queue_node);
-			cancel_transaction(client->lwis_dev, transaction, -ECANCELED, NULL);
-		}
-	}
+	/* Both transaction queues should be empty after draining, but check anyway. */
+	cancel_all_transactions_in_queue_locked(client, &client->transaction_process_queue);
+	cancel_all_transactions_in_queue_locked(client, &client->transaction_process_queue_tasklet);
 	spin_unlock_irqrestore(&client->transaction_lock, flags);
+
+	/* Resume the tasklet once making sure transactions are all flushed. */
+	tasklet_enable(&client->transaction_tasklet);
+
 	return 0;
 }
 
