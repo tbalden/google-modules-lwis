@@ -917,6 +917,10 @@ static int construct_io_entry(struct lwis_client *client, struct lwis_io_entry *
 	struct lwis_device *lwis_dev = client->lwis_dev;
 
 	entry_size = num_io_entries * sizeof(struct lwis_io_entry);
+	if (entry_size / sizeof(struct lwis_io_entry) != num_io_entries) {
+		dev_err(lwis_dev->dev, "Failed to prepare io entries due to integer overflow\n");
+		return -EOVERFLOW;
+	}
 	k_entries = lwis_allocator_allocate(lwis_dev, entry_size);
 	if (!k_entries) {
 		dev_err(lwis_dev->dev, "Failed to allocate io entries\n");
