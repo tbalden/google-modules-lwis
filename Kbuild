@@ -5,6 +5,7 @@ lwis-objs += lwis_device_ioreg.o
 lwis-objs += lwis_device_slc.o
 lwis-objs += lwis_device_top.o
 lwis-objs += lwis_clock.o
+lwis-objs += lwis_fence.o
 lwis-objs += lwis_gpio.o
 lwis-objs += lwis_i2c.o
 lwis-objs += lwis_interrupt.o
