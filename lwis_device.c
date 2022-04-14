@@ -114,6 +114,9 @@ static int lwis_open(struct inode *node, struct file *fp)
 	/* Empty hash table for client enrolled buffers */
 	hash_init(lwis_client->enrolled_buffers);
 
+	/* Initialize the allocator */
+	lwis_allocator_init(lwis_dev);
+
 	/* Start transaction processor task */
 	lwis_transaction_init(lwis_client);
 
@@ -133,7 +136,8 @@ static int lwis_open(struct inode *node, struct file *fp)
 	return 0;
 }
 
-static int lwis_release_client(struct lwis_client *lwis_client)
+/* Cleans client contents to a reset state. This will hold the LWIS client mutex. */
+static int lwis_cleanup_client(struct lwis_client *lwis_client)
 {
 	/* Let's lock the mutex while we're cleaning up to avoid other parts
 	 * of the code from acquiring dangling pointers to the client or any
@@ -144,6 +148,10 @@ static int lwis_release_client(struct lwis_client *lwis_client)
 	/* Clear event states for this client */
 	lwis_client_event_states_clear(lwis_client);
 
+	/* Clear the event queues */
+	lwis_client_event_queue_clear(lwis_client);
+	lwis_client_error_event_queue_clear(lwis_client);
+
 	/* Clean up all periodic io state for the client */
 	lwis_periodic_io_client_cleanup(lwis_client);
 
@@ -153,41 +161,71 @@ static int lwis_release_client(struct lwis_client *lwis_client)
 	/* Run cleanup transactions. */
 	lwis_transaction_client_cleanup(lwis_client);
 
-	/* Clear the event queue */
-	lwis_client_event_queue_clear(lwis_client);
-
 	/* Disenroll and clear the table of allocated and enrolled buffers */
 	lwis_client_allocated_buffers_clear(lwis_client);
 	lwis_client_enrolled_buffers_clear(lwis_client);
 
 	mutex_unlock(&lwis_client->lock);
-	kfree(lwis_client);
 
 	return 0;
 }
+
+/* Calling this requires holding lwis_dev->lock. */
+static inline bool check_client_exists(const struct lwis_device *lwis_dev,
+				       const struct lwis_client *lwis_client)
+{
+	struct lwis_client *p, *n;
+	list_for_each_entry_safe (p, n, &lwis_dev->clients, node) {
+		if (lwis_client == p) {
+			return true;
+		}
+	}
+	return false;
+}
+
+/* Release client and deletes its entry from the device's client list,
+ * this assumes that LWIS device still exists and will hold LWIS device
+ * and LWIS client locks. */
+static int lwis_release_client(struct lwis_client *lwis_client)
+{
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+	int rc = 0;
+	unsigned long flags;
+	rc = lwis_cleanup_client(lwis_client);
+	if (rc) {
+		return rc;
+	}
+
+	/* Take this lwis_client off the list of active clients */
+	spin_lock_irqsave(&lwis_dev->lock, flags);
+	if (check_client_exists(lwis_dev, lwis_client)) {
+		list_del(&lwis_client->node);
+	} else {
+		dev_err(lwis_dev->dev, "Trying to release a client tied to this device, "
+				       "but the entry was not found on the clients list.");
+	}
+	spin_unlock_irqrestore(&lwis_dev->lock, flags);
+
+	kfree(lwis_client);
+	return 0;
+}
+
 /*
  *  lwis_release: Closing an instance of a LWIS device
  */
 static int lwis_release(struct inode *node, struct file *fp)
 {
 	struct lwis_client *lwis_client = fp->private_data;
-	struct lwis_client *p, *n;
 	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
-	unsigned long flags;
 	int rc = 0;
 	bool is_client_enabled = lwis_client->is_enabled;
 
 	dev_info(lwis_dev->dev, "Closing instance %d\n", iminor(node));
 
-	/* Take this lwis_client off the list of active clients */
-	spin_lock_irqsave(&lwis_dev->lock, flags);
-	list_for_each_entry_safe (p, n, &lwis_dev->clients, node) {
-		if (lwis_client == p)
-			list_del(&lwis_client->node);
-	}
-	spin_unlock_irqrestore(&lwis_dev->lock, flags);
-
 	rc = lwis_release_client(lwis_client);
+
+	/* Release the allocator and its cache */
+	lwis_allocator_release(lwis_dev);
 
 	mutex_lock(&lwis_dev->client_lock);
 	/* Release power if client closed without power down called */
@@ -202,8 +240,10 @@ static int lwis_release(struct inode *node, struct file *fp)
 	if (lwis_dev->enabled == 0) {
 		if (lwis_dev->bts_index != BTS_UNSUPPORTED) {
 			lwis_platform_update_bts(lwis_dev, /*bw_peak=*/0,
-						 /*bw_read=*/0, /*bw_write=*/0);
+						 /*bw_read=*/0, /*bw_write=*/0, /*bw_rt=*/0);
 		}
+		/* remove voted qos */
+		lwis_platform_remove_qos(lwis_dev);
 		/* Release device event states if no more client is using */
 		lwis_device_event_states_clear_locked(lwis_dev);
 	}
@@ -226,7 +266,6 @@ static int lwis_release(struct inode *node, struct file *fp)
  */
 static long lwis_ioctl(struct file *fp, unsigned int type, unsigned long param)
 {
-	int ret = 0;
 	struct lwis_client *lwis_client;
 	struct lwis_device *lwis_dev;
 
@@ -242,17 +281,7 @@ static long lwis_ioctl(struct file *fp, unsigned int type, unsigned long param)
 		return -ENODEV;
 	}
 
-	mutex_lock(&lwis_client->lock);
-
-	ret = lwis_ioctl_handler(lwis_client, type, param);
-
-	mutex_unlock(&lwis_client->lock);
-
-	if (ret && ret != -ENOENT && ret != -ETIMEDOUT && ret != -EAGAIN) {
-		lwis_ioctl_pr_err(lwis_dev, type, ret);
-	}
-
-	return ret;
+	return lwis_ioctl_handler(lwis_client, type, param);
 }
 /*
  *  lwis_poll: Event queue status function of LWIS
@@ -269,8 +298,6 @@ static unsigned int lwis_poll(struct file *fp, poll_table *wait)
 		return POLLERR;
 	}
 
-	mutex_lock(&lwis_client->lock);
-
 	/* Add our wait queue to the poll table */
 	poll_wait(fp, &lwis_client->event_wait_queue, wait);
 
@@ -280,8 +307,6 @@ static unsigned int lwis_poll(struct file *fp, poll_table *wait)
 	} else if (lwis_client_event_peek_front(lwis_client, NULL) == 0) {
 		mask |= POLLIN;
 	}
-
-	mutex_unlock(&lwis_client->lock);
 
 	return mask;
 }
@@ -599,6 +624,11 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 {
 	int ret;
 
+	if (lwis_dev->global_i2c_lock == NULL) {
+		dev_err(lwis_dev->dev, "global_i2c_lock is NULL. Abort power up.\n");
+		return -EINVAL;
+	}
+
 	/* Let's do the platform-specific enable call */
 	ret = lwis_platform_device_enable(lwis_dev);
 	if (ret) {
@@ -615,18 +645,30 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 		}
 	}
 
+	if (lwis_dev->type == DEVICE_TYPE_I2C) {
+		mutex_lock(lwis_dev->global_i2c_lock);
+	}
 	if (lwis_dev->power_up_seqs_present) {
 		ret = lwis_dev_power_up_by_seqs(lwis_dev);
 		if (ret) {
 			dev_err(lwis_dev->dev, "Error lwis_dev_power_up_by_seqs (%d)\n", ret);
+			if (lwis_dev->type == DEVICE_TYPE_I2C) {
+				mutex_unlock(lwis_dev->global_i2c_lock);
+			}
 			goto error_power_up;
 		}
 	} else {
 		ret = lwis_dev_power_up_by_default(lwis_dev);
 		if (ret) {
 			dev_err(lwis_dev->dev, "Error lwis_dev_power_up_by_default (%d)\n", ret);
+			if (lwis_dev->type == DEVICE_TYPE_I2C) {
+				mutex_unlock(lwis_dev->global_i2c_lock);
+			}
 			goto error_power_up;
 		}
+	}
+	if (lwis_dev->type == DEVICE_TYPE_I2C) {
+		mutex_unlock(lwis_dev->global_i2c_lock);
 	}
 
 	if (lwis_dev->phys) {
@@ -635,14 +677,6 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 					     /* power_on = */ true);
 		if (ret) {
 			dev_err(lwis_dev->dev, "Error powering on PHY\n");
-			goto error_power_up;
-		}
-	}
-
-	if (lwis_dev->irqs) {
-		ret = lwis_interrupt_request_all_default(lwis_dev->irqs);
-		if (ret) {
-			dev_err(lwis_dev->dev, "Failed to request interrupts (%d)\n", ret);
 			goto error_power_up;
 		}
 	}
@@ -905,10 +939,6 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 		}
 	}
 
-	if (lwis_dev->irqs) {
-		lwis_interrupt_free_all_default(lwis_dev->irqs);
-	}
-
 	if (lwis_dev->phys) {
 		/* Power on the PHY */
 		ret = lwis_phy_set_power_all(lwis_dev->phys,
@@ -919,6 +949,9 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 		}
 	}
 
+	if (lwis_dev->type == DEVICE_TYPE_I2C && lwis_dev->global_i2c_lock != NULL) {
+		mutex_lock(lwis_dev->global_i2c_lock);
+	}
 	if (lwis_dev->power_down_seqs_present) {
 		ret = lwis_dev_power_down_by_seqs(lwis_dev);
 		if (ret) {
@@ -931,6 +964,9 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 			dev_err(lwis_dev->dev, "Error lwis_dev_power_down_by_default (%d)\n", ret);
 			last_error = ret;
 		}
+	}
+	if (lwis_dev->type == DEVICE_TYPE_I2C && lwis_dev->global_i2c_lock != NULL) {
+		mutex_unlock(lwis_dev->global_i2c_lock);
 	}
 
 	if (lwis_dev->clocks) {
@@ -967,14 +1003,14 @@ struct lwis_device_power_sequence_list *lwis_dev_power_seq_list_alloc(int count)
 		return ERR_PTR(-EINVAL);
 	}
 
-	list = kzalloc(sizeof(struct lwis_device_power_sequence_list), GFP_KERNEL);
+	list = kmalloc(sizeof(struct lwis_device_power_sequence_list), GFP_KERNEL);
 	if (!list) {
 		pr_err("Failed to allocate power sequence list\n");
 		return ERR_PTR(-ENOMEM);
 	}
 
 	list->seq_info =
-		kzalloc(count * sizeof(struct lwis_device_power_sequence_info), GFP_KERNEL);
+		kmalloc(count * sizeof(struct lwis_device_power_sequence_info), GFP_KERNEL);
 	if (!list->seq_info) {
 		pr_err("Failed to allocate lwis_device_power_sequence_info "
 		       "instances\n");
@@ -1018,10 +1054,7 @@ void lwis_dev_power_seq_list_print(struct lwis_device_power_sequence_list *list)
 	}
 }
 
-/*
- *  lwis_find_top_dev: Find LWIS top device.
- */
-struct lwis_device *lwis_find_top_dev()
+static struct lwis_device *find_top_dev()
 {
 	struct lwis_device *lwis_dev;
 
@@ -1084,6 +1117,19 @@ bool lwis_i2c_dev_is_in_use(struct lwis_device *lwis_dev)
 	return false;
 }
 
+void lwis_device_info_dump(const char *name, void (*func)(struct lwis_device *))
+{
+	struct lwis_device *lwis_dev_it;
+
+	pr_info("LWIS Device Info Dump: %s\n\n", name);
+
+	mutex_lock(&core.lock);
+	list_for_each_entry (lwis_dev_it, &core.lwis_dev_list, dev_list) {
+		func(lwis_dev_it);
+	}
+	mutex_unlock(&core.lock);
+}
+
 /*
  *  lwis_base_probe: Create a device instance for each of the LWIS device.
  */
@@ -1109,6 +1155,8 @@ int lwis_base_probe(struct lwis_device *lwis_dev, struct platform_device *plat_d
 	/* Initialize client mutex */
 	mutex_init(&lwis_dev->client_lock);
 
+	lwis_dev->global_i2c_lock = &core.global_i2c_lock;
+
 	/* Initialize register access mutex */
 	mutex_init(&lwis_dev->reg_rw_lock);
 
@@ -1126,7 +1174,7 @@ int lwis_base_probe(struct lwis_device *lwis_dev, struct platform_device *plat_d
 		/* Assign top device to the devices probed before */
 		lwis_assign_top_to_other(lwis_dev);
 	} else {
-		lwis_dev->top_dev = lwis_find_top_dev();
+		lwis_dev->top_dev = find_top_dev();
 		if (lwis_dev->top_dev == NULL)
 			pr_warn("Top device not probed yet");
 	}
@@ -1197,6 +1245,7 @@ void lwis_base_unprobe(struct lwis_device *unprobe_lwis_dev)
 			}
 			/* Release device regulator list */
 			if (lwis_dev->regulators) {
+				lwis_regulator_put_all(lwis_dev->regulators);
 				lwis_regulator_list_free(lwis_dev->regulators);
 				lwis_dev->regulators = NULL;
 			}
@@ -1218,6 +1267,16 @@ void lwis_base_unprobe(struct lwis_device *unprobe_lwis_dev)
 			if (lwis_dev->gpios_list) {
 				lwis_gpios_list_free(lwis_dev->gpios_list);
 				lwis_dev->gpios_list = NULL;
+			}
+			/* Release device gpio info irq list */
+			if (lwis_dev->irq_gpios_info.irq_list) {
+				lwis_interrupt_list_free(lwis_dev->irq_gpios_info.irq_list);
+				lwis_dev->irq_gpios_info.irq_list = NULL;
+			}
+			if (lwis_dev->irq_gpios_info.gpios) {
+				lwis_gpio_list_put(lwis_dev->irq_gpios_info.gpios,
+						   &lwis_dev->plat_dev->dev);
+				lwis_dev->irq_gpios_info.gpios = NULL;
 			}
 			/* Destroy device */
 			if (!IS_ERR(lwis_dev->dev)) {
@@ -1351,6 +1410,7 @@ static int __init lwis_base_device_init(void)
 	/* Initialize the core struct */
 	memset(&core, 0, sizeof(struct lwis_core));
 	mutex_init(&core.lock);
+	mutex_init(&core.global_i2c_lock);
 
 	ret = lwis_register_base_device();
 	if (ret) {
@@ -1429,32 +1489,55 @@ static void __exit lwis_driver_exit(void)
 		}
 		pm_runtime_disable(&lwis_dev->plat_dev->dev);
 		/* Release device clock list */
-		if (lwis_dev->clocks)
+		if (lwis_dev->clocks) {
 			lwis_clock_list_free(lwis_dev->clocks);
+		}
 		/* Release device interrupt list */
-		if (lwis_dev->irqs)
+		if (lwis_dev->irqs) {
 			lwis_interrupt_list_free(lwis_dev->irqs);
+		}
 		/* Release device regulator list */
-		if (lwis_dev->regulators)
+		if (lwis_dev->regulators) {
+			lwis_regulator_put_all(lwis_dev->regulators);
 			lwis_regulator_list_free(lwis_dev->regulators);
+		}
 		/* Release device phy list */
-		if (lwis_dev->phys)
+		if (lwis_dev->phys) {
 			lwis_phy_list_free(lwis_dev->phys);
+		}
 		/* Release device power sequence list */
-		if (lwis_dev->power_up_sequence)
+		if (lwis_dev->power_up_sequence) {
 			lwis_dev_power_seq_list_free(lwis_dev->power_up_sequence);
-		if (lwis_dev->power_down_sequence)
+		}
+		if (lwis_dev->power_down_sequence) {
 			lwis_dev_power_seq_list_free(lwis_dev->power_down_sequence);
+		}
 		/* Release device gpio list */
-		if (lwis_dev->gpios_list)
+		if (lwis_dev->gpios_list) {
 			lwis_gpios_list_free(lwis_dev->gpios_list);
-		if (lwis_dev->reset_gpios)
+		}
+		/* Release device gpio info irq list */
+		if (lwis_dev->irq_gpios_info.irq_list) {
+			lwis_interrupt_list_free(lwis_dev->irq_gpios_info.irq_list);
+		}
+		if (lwis_dev->irq_gpios_info.gpios) {
+			lwis_gpio_list_put(lwis_dev->irq_gpios_info.gpios,
+					   &lwis_dev->plat_dev->dev);
+		}
+		if (lwis_dev->reset_gpios) {
 			lwis_gpio_list_put(lwis_dev->reset_gpios, &lwis_dev->plat_dev->dev);
-		if (lwis_dev->enable_gpios)
+		}
+		if (lwis_dev->enable_gpios) {
 			lwis_gpio_list_put(lwis_dev->enable_gpios, &lwis_dev->plat_dev->dev);
+		}
+		if (lwis_dev->shared_enable_gpios) {
+			lwis_gpio_list_put(lwis_dev->shared_enable_gpios, &lwis_dev->plat_dev->dev);
+		}
 		/* Release event subscription components */
-		if (lwis_dev->type == DEVICE_TYPE_TOP)
+		if (lwis_dev->type == DEVICE_TYPE_TOP) {
 			lwis_dev->top_dev->subscribe_ops.release(lwis_dev);
+		}
+
 		/* Destroy device */
 		device_destroy(core.dev_class, MKDEV(core.device_major, lwis_dev->id));
 		list_del(&lwis_dev->dev_list);

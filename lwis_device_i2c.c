@@ -15,12 +15,20 @@
 #include <linux/device.h>
 #include <linux/init.h>
 #include <linux/kernel.h>
+#include <linux/kthread.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
+#include <linux/pm.h>
+#include <linux/preempt.h>
+#include <linux/sched.h>
+#include <linux/sched/types.h>
 #include <linux/slab.h>
+#include <uapi/linux/sched/types.h>
 
 #include "lwis_i2c.h"
 #include "lwis_init.h"
+#include "lwis_periodic_io.h"
+#include "lwis_util.h"
 
 #ifdef CONFIG_OF
 #include "lwis_dt.h"
@@ -35,7 +43,7 @@
 static int lwis_i2c_device_enable(struct lwis_device *lwis_dev);
 static int lwis_i2c_device_disable(struct lwis_device *lwis_dev);
 static int lwis_i2c_register_io(struct lwis_device *lwis_dev, struct lwis_io_entry *entry,
-				bool non_blocking, int access_size);
+				int access_size);
 
 static struct lwis_device_subclass_operations i2c_vops = {
 	.register_io = lwis_i2c_register_io,
@@ -60,7 +68,20 @@ static int lwis_i2c_device_enable(struct lwis_device *lwis_dev)
 	struct lwis_i2c_device *i2c_dev = (struct lwis_i2c_device *)lwis_dev;
 
 	/* Enable the I2C bus */
+	mutex_lock(lwis_dev->global_i2c_lock);
+
+#if IS_ENABLED(CONFIG_INPUT_STMVL53L1)
+	if (is_shared_i2c_with_stmvl53l1(i2c_dev->state_pinctrl))
+		ret = shared_i2c_set_state(&i2c_dev->client->dev,
+					   i2c_dev->state_pinctrl,
+					   I2C_ON_STRING);
+	else
+		ret = lwis_i2c_set_state(i2c_dev, I2C_ON_STRING);
+#else
 	ret = lwis_i2c_set_state(i2c_dev, I2C_ON_STRING);
+#endif
+
+	mutex_unlock(lwis_dev->global_i2c_lock);
 	if (ret) {
 		dev_err(lwis_dev->dev, "Error enabling i2c bus (%d)\n", ret);
 		return ret;
@@ -74,9 +95,27 @@ static int lwis_i2c_device_disable(struct lwis_device *lwis_dev)
 	int ret;
 	struct lwis_i2c_device *i2c_dev = (struct lwis_i2c_device *)lwis_dev;
 
+#if IS_ENABLED(CONFIG_INPUT_STMVL53L1)
+	if (is_shared_i2c_with_stmvl53l1(i2c_dev->state_pinctrl)) {
+		/* Disable the shared i2c bus */
+		mutex_lock(lwis_dev->global_i2c_lock);
+		ret = shared_i2c_set_state(&i2c_dev->client->dev,
+					   i2c_dev->state_pinctrl,
+					   I2C_OFF_STRING);
+		mutex_unlock(lwis_dev->global_i2c_lock);
+		if (ret) {
+			dev_err(lwis_dev->dev, "Error disabling i2c bus (%d)\n",
+				ret);
+		}
+		return ret;
+	}
+#endif
+
 	if (!lwis_i2c_dev_is_in_use(lwis_dev)) {
 		/* Disable the I2C bus */
+		mutex_lock(lwis_dev->global_i2c_lock);
 		ret = lwis_i2c_set_state(i2c_dev, I2C_OFF_STRING);
+		mutex_unlock(lwis_dev->global_i2c_lock);
 		if (ret) {
 			dev_err(lwis_dev->dev, "Error disabling i2c bus (%d)\n", ret);
 			return ret;
@@ -87,10 +126,10 @@ static int lwis_i2c_device_disable(struct lwis_device *lwis_dev)
 }
 
 static int lwis_i2c_register_io(struct lwis_device *lwis_dev, struct lwis_io_entry *entry,
-				bool non_blocking, int access_size)
+				int access_size)
 {
-	/* I2C does not currently support non-blocking calls at all */
-	if (non_blocking) {
+	/* Running in interrupt context is not supported as i2c driver might sleep */
+	if (in_interrupt()) {
 		return -EAGAIN;
 	}
 	return lwis_i2c_io_entry_rw((struct lwis_i2c_device *)lwis_dev, entry);
@@ -202,7 +241,7 @@ static int lwis_i2c_device_probe(struct platform_device *plat_dev)
 	i2c_dev->base_dev.subscribe_ops = i2c_subscribe_ops;
 
 	/* Call the base device probe function */
-	ret = lwis_base_probe((struct lwis_device *)i2c_dev, plat_dev);
+	ret = lwis_base_probe(&i2c_dev->base_dev, plat_dev);
 	if (ret) {
 		pr_err("Error in lwis base probe\n");
 		goto error_probe;
@@ -212,8 +251,42 @@ static int lwis_i2c_device_probe(struct platform_device *plat_dev)
 	ret = lwis_i2c_device_setup(i2c_dev);
 	if (ret) {
 		dev_err(i2c_dev->base_dev.dev, "Error in i2c device initialization\n");
-		lwis_base_unprobe((struct lwis_device *)i2c_dev);
+		lwis_base_unprobe(&i2c_dev->base_dev);
 		goto error_probe;
+	}
+
+	/* Create associated kworker threads */
+	ret = lwis_create_kthread_workers(&i2c_dev->base_dev, "lwis_i2c_trans_kthread",
+					 "lwis_i2c_prd_io_kthread");
+	if (ret) {
+		dev_err(i2c_dev->base_dev.dev,"Failed to create lwis_i2c_kthread");
+		lwis_base_unprobe(&i2c_dev->base_dev);
+		goto error_probe;
+	}
+
+	if (i2c_dev->base_dev.transaction_thread_priority != 0) {
+		ret = lwis_set_kthread_priority(&i2c_dev->base_dev,
+			i2c_dev->base_dev.transaction_worker_thread,
+			i2c_dev->base_dev.transaction_thread_priority);
+		if (ret) {
+			dev_err(i2c_dev->base_dev.dev,
+				"Failed to set LWIS I2C transaction kthread priority (%d)",
+				ret);
+			lwis_base_unprobe(&i2c_dev->base_dev);
+			goto error_probe;
+		}
+	}
+	if (i2c_dev->base_dev.periodic_io_thread_priority != 0) {
+		ret = lwis_set_kthread_priority(&i2c_dev->base_dev,
+			i2c_dev->base_dev.periodic_io_worker_thread,
+			i2c_dev->base_dev.periodic_io_thread_priority);
+		if (ret) {
+			dev_err(i2c_dev->base_dev.dev,
+				"Failed to set LWIS I2C periodic io kthread priority (%d)",
+				ret);
+			lwis_base_unprobe(&i2c_dev->base_dev);
+			goto error_probe;
+		}
 	}
 
 	dev_info(i2c_dev->base_dev.dev, "I2C Device Probe: Success\n");
@@ -224,6 +297,74 @@ error_probe:
 	kfree(i2c_dev);
 	return ret;
 }
+
+#ifdef CONFIG_PM
+static int lwis_i2c_device_suspend(struct device *dev)
+{
+	struct lwis_device *lwis_dev = dev_get_drvdata(dev);
+	struct lwis_client *lwis_client, *n;
+	int ret = 0;
+
+	if (lwis_dev->enabled == 0) {
+		return ret;
+	}
+
+	if (lwis_dev->pm_hibernation == 0) {
+		dev_warn(lwis_dev->dev, "Can't suspend because %s is in use!\n", lwis_dev->name);
+		return -EBUSY;
+	}
+
+	/* Send an error event to userspace to handle the system suspend */
+	lwis_device_error_event_emit(lwis_dev, LWIS_ERROR_EVENT_ID_SYSTEM_SUSPEND,
+				     /*payload=*/NULL, /*payload_size=*/0);
+
+	list_for_each_entry_safe (lwis_client, n, &lwis_dev->clients, node) {
+		if (!lwis_client->is_enabled) {
+			continue;
+		}
+
+		/* Clear event states for this client */
+		lwis_client_event_states_clear(lwis_client);
+
+		/* Flush all periodic io to complete */
+		ret = lwis_periodic_io_client_flush(lwis_client);
+		if (ret) {
+			dev_err(lwis_dev->dev,
+				"Failed to wait for in-process periodic io to complete\n");
+		}
+
+		/* Flush all pending transactions */
+		ret = lwis_transaction_client_flush(lwis_client);
+		if (ret) {
+			dev_err(lwis_dev->dev, "Failed to flush pending transactions\n");
+		}
+
+		/* Run cleanup transactions. */
+		lwis_transaction_client_cleanup(lwis_client);
+
+		lwis_client->is_enabled = false;
+	}
+
+	mutex_lock(&lwis_dev->client_lock);
+	ret = lwis_dev_power_down_locked(lwis_dev);
+	if (ret < 0) {
+		dev_err(lwis_dev->dev, "Failed to power down device\n");
+	}
+
+	lwis_device_event_states_clear_locked(lwis_dev);
+	lwis_dev->enabled = 0;
+	dev_warn(lwis_dev->dev, "Device disabled when system suspend\n");
+	mutex_unlock(&lwis_dev->client_lock);
+	return 0;
+}
+
+static int lwis_i2c_device_resume(struct device *dev)
+{
+	return 0;
+}
+
+static SIMPLE_DEV_PM_OPS(lwis_i2c_device_ops, lwis_i2c_device_suspend, lwis_i2c_device_resume);
+#endif
 
 #ifdef CONFIG_OF
 static const struct of_device_id lwis_id_match[] = {
@@ -239,6 +380,7 @@ static struct platform_driver lwis_driver = {
 			.name = LWIS_DRIVER_NAME,
 			.owner = THIS_MODULE,
 			.of_match_table = lwis_id_match,
+			.pm	= &lwis_i2c_device_ops,
 		},
 };
 #else /* CONFIG_OF not defined */

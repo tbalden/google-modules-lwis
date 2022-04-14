@@ -11,6 +11,7 @@
 #ifndef LWIS_PERIODIC_IO_H_
 #define LWIS_PERIODIC_IO_H_
 
+#include <linux/completion.h>
 #include <linux/hrtimer.h>
 
 #include "lwis_commands.h"
@@ -38,6 +39,12 @@ struct lwis_periodic_io {
 	bool active;
 	/* The node in the timer periodic io list */
 	struct list_head timer_list_node;
+	/* Completion barrier to mark if io processing is ongoing */
+	struct completion io_done;
+	/* A flag to indicate whether the periodic io has more than one writes.
+	 * This will be used on the cancellation policy to prevent partial write
+	 * during cancellation */
+	bool contains_multiple_writes;
 };
 
 // This is a proxy of the Periodic IO. A proxy of the actual periodic io will be
@@ -74,6 +81,6 @@ int lwis_periodic_io_client_flush(struct lwis_client *client);
 int lwis_periodic_io_client_cleanup(struct lwis_client *client);
 int lwis_periodic_io_submit(struct lwis_client *client, struct lwis_periodic_io *periodic_io);
 int lwis_periodic_io_cancel(struct lwis_client *client, int64_t id);
-void lwis_periodic_io_clean(struct lwis_periodic_io *periodic_io);
+void lwis_periodic_io_free(struct lwis_device *lwis_dev, struct lwis_periodic_io *periodic_io);
 
 #endif /* LWIS_PERIODIC_IO_H_ */

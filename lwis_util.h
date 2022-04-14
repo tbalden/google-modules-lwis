@@ -25,38 +25,32 @@ struct lwis_device;
  * write a single register for a given bid, offset and value on any device
  * that supports register writes.
  *
- * non_blocking: Specifies whether blocking is allowed (i.e. should be set to
- * true when called with IRQs disabled, or from an ISR)
- *
  * Returns: 0 on success
  * -EAGAIN if non_blocking is true and the operation would need to block
  * -ENXIO if register offset is out of range allowed for bid
  * Other errors are possible
  */
-int lwis_device_single_register_write(struct lwis_device *lwis_dev, bool non_blocking, int bid,
-				      uint64_t offset, uint64_t value, int access_size);
+int lwis_device_single_register_write(struct lwis_device *lwis_dev, int bid, uint64_t offset,
+				      uint64_t value, int access_size);
 
 /*
  * lwis_device_single_register_read: A utility function that allows you to
  * read a single register for a given bid, offset and value on any device
  * that supports register reads.
  *
- * non_blocking: Specifies whether blocking is allowed (i.e. should be set to
- * true when called with IRQs disabled, or from an ISR)
- *
  * Returns: 0 on success
  * -EAGAIN if non_blocking is true and the operation would need to block
  * -ENXIO if register offset is out of range allowed for bid
  * Other errors are possible
  */
-int lwis_device_single_register_read(struct lwis_device *lwis_dev, bool non_blocking, int bid,
-				     uint64_t offset, uint64_t *value, int access_size);
+int lwis_device_single_register_read(struct lwis_device *lwis_dev, int bid, uint64_t offset,
+				     uint64_t *value, int access_size);
 
 /*
  * lwis_device_type_to_string: Converts the LWIS device type into a human-
  * readable string. Useful for debug logging.
  */
-const char *lwis_device_type_to_string(enum lwis_device_types type);
+const char *lwis_device_type_to_string(int32_t type);
 
 /*
  * lwis_get_time: Returns time since boot, this uses CLOCK_BOOTTIME which
@@ -69,5 +63,17 @@ static inline ktime_t lwis_get_time()
 {
 	return ktime_get_boottime();
 }
+
+/*
+ * lwis_create_kthread_workers: Creates kthread workers associated with this lwis device.
+ */
+int lwis_create_kthread_workers(struct lwis_device *lwis_dev, const char *transaction_worker_name,
+				const char *periodic_io_worker_name);
+
+/*
+ * lwis_set_kthread_priority: Set kthread priority.
+ */
+int lwis_set_kthread_priority(struct lwis_device *lwis_dev, struct task_struct *task,
+			      u32 priority);
 
 #endif // LWIS_UTIL_H_

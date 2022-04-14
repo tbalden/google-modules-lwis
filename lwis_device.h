@@ -17,6 +17,7 @@
 #include <linux/hashtable.h>
 #include <linux/idr.h>
 #include <linux/kernel.h>
+#include <linux/kthread.h>
 #include <linux/list.h>
 #include <linux/mutex.h>
 #include <linux/platform_device.h>
@@ -51,6 +52,11 @@ struct lwis_device;
 /* Forward declaration of a platform specific struct used by platform funcs */
 struct lwis_platform;
 
+/* Forward declaration of lwis allocator block manager */
+struct lwis_allocator_block_mgr;
+int lwis_allocator_init(struct lwis_device *lwis_dev);
+void lwis_allocator_release(struct lwis_device *lwis_dev);
+
 /*
  *  struct lwis_core
  *  This struct applies to all LWIS devices that are defined in the
@@ -61,6 +67,7 @@ struct lwis_core {
 	struct idr *idr;
 	struct cdev *chr_dev;
 	struct mutex lock;
+	struct mutex global_i2c_lock;
 	dev_t lwis_devt;
 	int device_major;
 	struct list_head lwis_dev_list;
@@ -75,7 +82,7 @@ struct lwis_core {
 struct lwis_device_subclass_operations {
 	/* Called by lwis_device when device register needs to be read/written */
 	int (*register_io)(struct lwis_device *lwis_dev, struct lwis_io_entry *entry,
-			   bool non_blocking, int access_size);
+			   int access_size);
 	/* Called by lwis_device when a read/write memory barrier needs to be inserted */
 	int (*register_io_barrier)(struct lwis_device *lwis_dev, bool use_read_barrier,
 				   bool use_write_barrier);
@@ -104,12 +111,12 @@ struct lwis_device_subclass_operations {
  * Top device should be the only device to implement it.
  */
 struct lwis_event_subscribe_operations {
-	/* Subscribe an event for receiver device */
+	/* Subscribe an event for subscriber device */
 	int (*subscribe_event)(struct lwis_device *lwis_dev, int64_t trigger_event_id,
-			       int trigger_device_id, int receiver_device_id);
-	/* Unsubscribe an event for receiver device */
+			       int trigger_device_id, int subscriber_device_id);
+	/* Unsubscribe an event for subscriber device */
 	int (*unsubscribe_event)(struct lwis_device *lwis_dev, int64_t trigger_event_id,
-				 int receiver_device_id);
+				 int subscriber_device_id);
 	/* Notify subscriber when an event is happening */
 	void (*notify_event_subscriber)(struct lwis_device *lwis_dev, int64_t trigger_event_id,
 					int64_t trigger_event_count,
@@ -165,7 +172,7 @@ struct lwis_device_debug_info {
 struct lwis_device {
 	struct lwis_platform *platform;
 	int id;
-	enum lwis_device_types type;
+	int32_t type;
 	char name[LWIS_MAX_NAME_STRING_LEN];
 	struct device *dev;
 	struct platform_device *plat_dev;
@@ -189,6 +196,8 @@ struct lwis_device {
 	int enabled;
 	/* Mutex used to synchronize access between clients */
 	struct mutex client_lock;
+	/* Mutex shared by all I2C devices */
+	struct mutex *global_i2c_lock;
 	/* Spinlock used to synchronize access to the device struct */
 	spinlock_t lock;
 	/* List of clients opened for this device */
@@ -197,8 +206,6 @@ struct lwis_device {
 	DECLARE_HASHTABLE(event_states, EVENT_HASH_BITS);
 	/* Virtual function table for sub classes */
 	struct lwis_device_subclass_operations vops;
-	/* Does the device have IOMMU. TODO: Move to platform */
-	bool has_iommu;
 	/* Mutex used to synchronize register access between clients */
 	struct mutex reg_rw_lock;
 	/* Heartbeat timer structure */
@@ -239,6 +246,26 @@ struct lwis_device {
 	struct lwis_device_power_sequence_list *power_down_sequence;
 	/* GPIOs list */
 	struct lwis_gpios_list *gpios_list;
+	/* GPIO interrupts list */
+	struct lwis_gpios_info irq_gpios_info;
+
+	/* Power management hibernation state of the device */
+	int pm_hibernation;
+
+	/* Is device read only */
+	bool is_read_only;
+	/* Adjust thread priority */
+	u32 transaction_thread_priority;
+	u32 periodic_io_thread_priority;
+
+	/* LWIS allocator block manager */
+	struct lwis_allocator_block_mgr *block_mgr;
+
+	/* Worker thread */
+	struct kthread_worker transaction_worker;
+	struct task_struct *transaction_worker_thread;
+	struct kthread_worker periodic_io_worker;
+	struct task_struct *periodic_io_worker_thread;
 };
 
 /*
@@ -253,7 +280,9 @@ struct lwis_client {
 	DECLARE_HASHTABLE(event_states, EVENT_HASH_BITS);
 	/* Queue of pending events to be consumed by userspace */
 	struct list_head event_queue;
+	size_t event_queue_size;
 	struct list_head error_event_queue;
+	size_t error_event_queue_size;
 	/* Spinlock used to synchronize access to event states and queue */
 	spinlock_t event_lock;
 	/* Event wait queue for waking up userspace */
@@ -266,8 +295,6 @@ struct lwis_client {
 	DECLARE_HASHTABLE(transaction_list, TRANSACTION_HASH_BITS);
 	/* Transaction task-related variables */
 	struct tasklet_struct transaction_tasklet;
-	struct workqueue_struct *transaction_wq;
-	struct work_struct transaction_work;
 	/* Spinlock used to synchronize access to transaction data structs */
 	spinlock_t transaction_lock;
 	/* List of transaction triggers */
@@ -277,9 +304,9 @@ struct lwis_client {
 	int64_t transaction_counter;
 	/* Hash table of hrtimer keyed by time out duration */
 	DECLARE_HASHTABLE(timer_list, PERIODIC_IO_HASH_BITS);
-	/* Workqueue variables for periodic io */
-	struct workqueue_struct *periodic_io_wq;
-	struct work_struct periodic_io_work;
+	/* Work item */
+	struct kthread_work transaction_work;
+	struct kthread_work periodic_io_work;
 	/* Spinlock used to synchronize access to periodic io data structs */
 	spinlock_t periodic_io_lock;
 	/* Queue of all periodic_io pending processing */
@@ -304,11 +331,6 @@ int lwis_base_probe(struct lwis_device *lwis_dev, struct platform_device *plat_d
  *  lwis_base_unprobe: Cleanup a device instance
  */
 void lwis_base_unprobe(struct lwis_device *unprobe_lwis_dev);
-
-/*
- * Find LWIS top device
- */
-struct lwis_device *lwis_find_top_dev(void);
 
 /*
  * Find LWIS device by id
@@ -352,5 +374,11 @@ void lwis_dev_power_seq_list_free(struct lwis_device_power_sequence_list *list);
  *  Print lwis_device_power_sequence_list content
  */
 void lwis_dev_power_seq_list_print(struct lwis_device_power_sequence_list *list);
+
+/*
+ * lwis_device_info_dump:
+ * Use the customized function handle to print information from each device registered in LWIS.
+ */
+void lwis_device_info_dump(const char *name, void (*func)(struct lwis_device *));
 
 #endif /* LWIS_DEVICE_H_ */

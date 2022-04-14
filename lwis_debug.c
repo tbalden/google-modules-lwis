@@ -12,6 +12,7 @@
 #include <linux/fs.h>
 #include <linux/hashtable.h>
 #include <linux/list.h>
+#include <linux/string.h>
 
 #include "lwis_buffer.h"
 #include "lwis_debug.h"
@@ -19,6 +20,27 @@
 #include "lwis_event.h"
 #include "lwis_transaction.h"
 #include "lwis_util.h"
+
+#define PRINT_BUFFER_SIZE 128
+/* Printing the log buffer line by line as printk does not work well with large chunks of data */
+static void print_to_log(char *buffer)
+{
+	int size;
+	char tmpbuf[PRINT_BUFFER_SIZE + 1];
+	char *start = buffer;
+	char *end = strchr(buffer, '\n');
+	while (end != NULL) {
+		size = end - start + 1;
+		if (size > PRINT_BUFFER_SIZE) {
+			size = PRINT_BUFFER_SIZE;
+		}
+		memcpy(tmpbuf, start, size);
+		tmpbuf[size] = '\0';
+		pr_info("%s", tmpbuf);
+		start = end + 1;
+		end = strchr(start, '\n');
+	}
+}
 
 static void list_transactions(struct lwis_client *client, char *k_buf, size_t k_buf_size)
 {
@@ -115,7 +137,10 @@ static void list_allocated_buffers(struct lwis_client *client, char *k_buf, size
 static void list_enrolled_buffers(struct lwis_client *client, char *k_buf, size_t k_buf_size)
 {
 	char tmp_buf[128] = {};
+	struct lwis_buffer_enrollment_list *enrollment_list;
+	struct list_head *it_enrollment;
 	struct lwis_enrolled_buffer *buffer;
+	dma_addr_t end_dma_vaddr;
 	int i;
 	int idx = 0;
 
@@ -125,14 +150,17 @@ static void list_enrolled_buffers(struct lwis_client *client, char *k_buf, size_
 	}
 
 	strlcat(k_buf, "Enrolled buffers:\n", k_buf_size);
-	hash_for_each (client->enrolled_buffers, i, buffer, node) {
-		scnprintf(tmp_buf, sizeof(tmp_buf),
-			  "[%2d] FD: %d Mode: %s%s Addr:[0x%px ~ 0x%px] Size: %zu\n", idx++,
-			  buffer->info.fd, buffer->info.dma_read ? "r" : "",
-			  buffer->info.dma_write ? "w" : "", (void *)buffer->info.dma_vaddr,
-			  (void *)(buffer->info.dma_vaddr + (buffer->dma_buf->size - 1)),
-			  buffer->dma_buf->size);
-		strlcat(k_buf, tmp_buf, k_buf_size);
+	hash_for_each (client->enrolled_buffers, i, enrollment_list, node) {
+		list_for_each (it_enrollment, &enrollment_list->list) {
+			buffer = list_entry(it_enrollment, struct lwis_enrolled_buffer, list_node);
+			end_dma_vaddr = buffer->info.dma_vaddr + (buffer->dma_buf->size - 1);
+			scnprintf(tmp_buf, sizeof(tmp_buf),
+				  "[%2d] FD: %d Mode: %s%s Addr:[%pad ~ %pad] Size: %zu\n", idx++,
+				  buffer->info.fd, buffer->info.dma_read ? "r" : "",
+				  buffer->info.dma_write ? "w" : "", &buffer->info.dma_vaddr,
+				  &end_dma_vaddr, buffer->dma_buf->size);
+			strlcat(k_buf, tmp_buf, k_buf_size);
+		}
 	}
 }
 
@@ -279,7 +307,7 @@ int lwis_debug_print_device_info(struct lwis_device *lwis_dev)
 		dev_err(lwis_dev->dev, "Failed to generate device info");
 		return ret;
 	}
-	pr_info("%s", buffer);
+	print_to_log(buffer);
 	return 0;
 }
 
@@ -289,13 +317,17 @@ int lwis_debug_print_event_states_info(struct lwis_device *lwis_dev)
 	/* Buffer to store information */
 	const size_t buffer_size = 8192;
 	char *buffer = kzalloc(buffer_size, GFP_KERNEL);
+	if (!buffer) {
+		dev_err(lwis_dev->dev, "Failed to allocate event states log buffer\n");
+		return -ENOMEM;
+	}
 
 	ret = generate_event_states_info(lwis_dev, buffer, buffer_size);
 	if (ret) {
 		dev_err(lwis_dev->dev, "Failed to generate event states info");
 		goto exit;
 	}
-	pr_info("%s", buffer);
+	print_to_log(buffer);
 exit:
 	kfree(buffer);
 	return ret;
@@ -307,13 +339,17 @@ int lwis_debug_print_transaction_info(struct lwis_device *lwis_dev)
 	/* Buffer to store information */
 	const size_t buffer_size = 10240;
 	char *buffer = kzalloc(buffer_size, GFP_KERNEL);
+	if (!buffer) {
+		dev_err(lwis_dev->dev, "Failed to allocate transaction info log buffer\n");
+		return -ENOMEM;
+	}
 
 	ret = generate_transaction_info(lwis_dev, buffer, buffer_size);
 	if (ret) {
 		dev_err(lwis_dev->dev, "Failed to generate transaction info");
 		goto exit;
 	}
-	pr_info("%s", buffer);
+	print_to_log(buffer);
 exit:
 	kfree(buffer);
 	return ret;
@@ -325,13 +361,17 @@ int lwis_debug_print_buffer_info(struct lwis_device *lwis_dev)
 	/* Buffer to store information */
 	const size_t buffer_size = 2048;
 	char *buffer = kzalloc(buffer_size, GFP_KERNEL);
+	if (!buffer) {
+		dev_err(lwis_dev->dev, "Failed to allocate buffer info log buffer\n");
+		return -ENOMEM;
+	}
 
 	ret = generate_buffer_info(lwis_dev, buffer, buffer_size);
 	if (ret) {
 		dev_err(lwis_dev->dev, "Failed to generate buffer info");
 		goto exit;
 	}
-	pr_info("%s", buffer);
+	print_to_log(buffer);
 exit:
 	kfree(buffer);
 	return ret;
@@ -363,8 +403,12 @@ static ssize_t event_states_read(struct file *fp, char __user *user_buf, size_t 
 	int ret = 0;
 	/* Buffer to store information */
 	const size_t buffer_size = 8192;
-	char *buffer = kzalloc(buffer_size, GFP_KERNEL);
 	struct lwis_device *lwis_dev = fp->f_inode->i_private;
+	char *buffer = kzalloc(buffer_size, GFP_KERNEL);
+	if (!buffer) {
+		dev_err(lwis_dev->dev, "Failed to allocate event states log buffer\n");
+		return -ENOMEM;
+	}
 
 	ret = generate_event_states_info(lwis_dev, buffer, buffer_size);
 	if (ret) {
@@ -383,8 +427,12 @@ static ssize_t transaction_info_read(struct file *fp, char __user *user_buf, siz
 	int ret = 0;
 	/* Buffer to store information */
 	const size_t buffer_size = 10240;
-	char *buffer = kzalloc(buffer_size, GFP_KERNEL);
 	struct lwis_device *lwis_dev = fp->f_inode->i_private;
+	char *buffer = kzalloc(buffer_size, GFP_KERNEL);
+	if (!buffer) {
+		dev_err(lwis_dev->dev, "Failed to allocate transaction info log buffer\n");
+		return -ENOMEM;
+	}
 
 	ret = generate_transaction_info(lwis_dev, buffer, buffer_size);
 	if (ret) {
@@ -404,8 +452,12 @@ static ssize_t buffer_info_read(struct file *fp, char __user *user_buf, size_t c
 	int ret = 0;
 	/* Buffer to store information */
 	const size_t buffer_size = 2048;
-	char *buffer = kzalloc(buffer_size, GFP_KERNEL);
 	struct lwis_device *lwis_dev = fp->f_inode->i_private;
+	char *buffer = kzalloc(buffer_size, GFP_KERNEL);
+	if (!buffer) {
+		dev_err(lwis_dev->dev, "Failed to allocate buffer info log buffer\n");
+		return -ENOMEM;
+	}
 
 	ret = generate_buffer_info(lwis_dev, buffer, buffer_size);
 	if (ret) {

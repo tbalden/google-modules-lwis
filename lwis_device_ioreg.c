@@ -18,10 +18,13 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <uapi/linux/sched/types.h>
 
 #include "lwis_init.h"
 #include "lwis_interrupt.h"
 #include "lwis_ioreg.h"
+#include "lwis_periodic_io.h"
+#include "lwis_util.h"
 
 #ifdef CONFIG_OF
 #include "lwis_dt.h"
@@ -32,7 +35,7 @@
 static int lwis_ioreg_device_enable(struct lwis_device *lwis_dev);
 static int lwis_ioreg_device_disable(struct lwis_device *lwis_dev);
 static int lwis_ioreg_register_io(struct lwis_device *lwis_dev, struct lwis_io_entry *entry,
-				  bool non_blocking, int access_size);
+				  int access_size);
 static int lwis_ioreg_register_io_barrier(struct lwis_device *lwis_dev, bool read, bool write);
 
 static struct lwis_device_subclass_operations ioreg_vops = {
@@ -63,10 +66,9 @@ static int lwis_ioreg_device_disable(struct lwis_device *lwis_dev)
 }
 
 static int lwis_ioreg_register_io(struct lwis_device *lwis_dev, struct lwis_io_entry *entry,
-				  bool non_blocking, int access_size)
+				  int access_size)
 {
-	return lwis_ioreg_io_entry_rw((struct lwis_ioreg_device *)lwis_dev, entry, non_blocking,
-				      access_size);
+	return lwis_ioreg_io_entry_rw((struct lwis_ioreg_device *)lwis_dev, entry, access_size);
 }
 
 static int lwis_ioreg_register_io_barrier(struct lwis_device *lwis_dev, bool use_read_barrier,
@@ -111,7 +113,7 @@ static int lwis_ioreg_device_probe(struct platform_device *plat_dev)
 	ioreg_dev->base_dev.subscribe_ops = ioreg_subscribe_ops;
 
 	/* Call the base device probe function */
-	ret = lwis_base_probe((struct lwis_device *)ioreg_dev, plat_dev);
+	ret = lwis_base_probe(&ioreg_dev->base_dev, plat_dev);
 	if (ret) {
 		pr_err("Error in lwis base probe\n");
 		goto error_probe;
@@ -121,8 +123,42 @@ static int lwis_ioreg_device_probe(struct platform_device *plat_dev)
 	ret = lwis_ioreg_device_setup(ioreg_dev);
 	if (ret) {
 		dev_err(ioreg_dev->base_dev.dev, "Error in IOREG device initialization\n");
-		lwis_base_unprobe((struct lwis_device *)ioreg_dev);
+		lwis_base_unprobe(&ioreg_dev->base_dev);
 		goto error_probe;
+	}
+
+	/* Create associated kworker threads */
+	ret = lwis_create_kthread_workers(&ioreg_dev->base_dev, "lwis_ioreg_trans_kthread",
+					 "lwis_ioreg_prd_io_kthread");
+	if (ret) {
+		dev_err(ioreg_dev->base_dev.dev, "Failed to create lwis_ioreg_kthread");
+		lwis_base_unprobe(&ioreg_dev->base_dev);
+		goto error_probe;
+	}
+
+	if (ioreg_dev->base_dev.transaction_thread_priority != 0) {
+		ret = lwis_set_kthread_priority(&ioreg_dev->base_dev,
+			ioreg_dev->base_dev.transaction_worker_thread,
+			ioreg_dev->base_dev.transaction_thread_priority);
+		if (ret) {
+			dev_err(ioreg_dev->base_dev.dev,
+				"Failed to set LWIS IOREG transaction kthread priority (%d)",
+				ret);
+			lwis_base_unprobe(&ioreg_dev->base_dev);
+			goto error_probe;
+		}
+	}
+	if (ioreg_dev->base_dev.periodic_io_thread_priority != 0) {
+		ret = lwis_set_kthread_priority(&ioreg_dev->base_dev,
+			ioreg_dev->base_dev.periodic_io_worker_thread,
+			ioreg_dev->base_dev.periodic_io_thread_priority);
+		if (ret) {
+			dev_err(ioreg_dev->base_dev.dev,
+				"Failed to set LWIS IOREG periodic io kthread priority (%d)",
+				ret);
+			lwis_base_unprobe(&ioreg_dev->base_dev);
+			goto error_probe;
+		}
 	}
 
 	dev_info(ioreg_dev->base_dev.dev, "IOREG Device Probe: Success\n");
@@ -133,6 +169,70 @@ error_probe:
 	kfree(ioreg_dev);
 	return ret;
 }
+
+#ifdef CONFIG_PM
+static int lwis_ioreg_device_suspend(struct device *dev)
+{
+	struct lwis_device *lwis_dev = dev_get_drvdata(dev);
+	struct lwis_client *lwis_client, *n;
+	int ret = 0;
+
+	if (lwis_dev->enabled == 0) {
+		return ret;
+	}
+
+	/* Send an error event to userspace to handle the system suspend */
+	lwis_device_error_event_emit(lwis_dev, LWIS_ERROR_EVENT_ID_SYSTEM_SUSPEND,
+				     /*payload=*/NULL, /*payload_size=*/0);
+
+	list_for_each_entry_safe (lwis_client, n, &lwis_dev->clients, node) {
+		if (!lwis_client->is_enabled) {
+			continue;
+		}
+
+		/* Clear event states for this client */
+		lwis_client_event_states_clear(lwis_client);
+
+		/* Flush all periodic io to complete */
+		ret = lwis_periodic_io_client_flush(lwis_client);
+		if (ret) {
+			dev_err(lwis_dev->dev,
+				"Failed to wait for in-process periodic io to complete\n");
+		}
+
+		/* Flush all pending transactions */
+		ret = lwis_transaction_client_flush(lwis_client);
+		if (ret) {
+			dev_err(lwis_dev->dev, "Failed to flush pending transactions\n");
+		}
+
+		/* Run cleanup transactions. */
+		lwis_transaction_client_cleanup(lwis_client);
+
+		lwis_client->is_enabled = false;
+	}
+
+	mutex_lock(&lwis_dev->client_lock);
+	ret = lwis_dev_power_down_locked(lwis_dev);
+	if (ret < 0) {
+		dev_err(lwis_dev->dev, "Failed to power down device\n");
+	}
+
+	lwis_device_event_states_clear_locked(lwis_dev);
+	lwis_dev->enabled = 0;
+	dev_warn(lwis_dev->dev, "Device disabled when system suspend\n");
+	mutex_unlock(&lwis_dev->client_lock);
+	return 0;
+}
+
+static int lwis_ioreg_device_resume(struct device *dev)
+{
+	return 0;
+}
+
+static SIMPLE_DEV_PM_OPS(lwis_ioreg_device_ops, lwis_ioreg_device_suspend,
+			 lwis_ioreg_device_resume);
+#endif
 
 #ifdef CONFIG_OF
 static const struct of_device_id lwis_id_match[] = {
@@ -148,6 +248,7 @@ static struct platform_driver lwis_driver = {
 			.name = LWIS_DRIVER_NAME,
 			.owner = THIS_MODULE,
 			.of_match_table = lwis_id_match,
+			.pm = &lwis_ioreg_device_ops,
 		},
 };
 #else /* CONFIG_OF not defined */

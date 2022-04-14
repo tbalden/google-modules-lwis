@@ -22,7 +22,7 @@
 struct lwis_interrupt {
 	int irq;
 	/* IRQ name */
-	char *name;
+	char name[IRQ_FULL_NAME_LENGTH];
 	/* Full name consists of both device and irq name */
 	char full_name[IRQ_FULL_NAME_LENGTH];
 	/* Device that owns this interrupt */
@@ -77,11 +77,18 @@ struct lwis_interrupt_list *lwis_interrupt_list_alloc(struct lwis_device *lwis_d
 void lwis_interrupt_list_free(struct lwis_interrupt_list *list);
 
 /*
- *  lwis_interrupt_get: Register the interrupt by name.
- *  Returns: index number (>= 0) if success, -ve if error
+ *  lwis_interrupt_get: Register the interrupt by index.
+ *  Returns: 0 if success, -ve if error
  */
 int lwis_interrupt_get(struct lwis_interrupt_list *list, int index, char *name,
 		       struct platform_device *plat_dev);
+
+/*
+ *  lwis_interrupt_get_gpio_irq: Register the GPIO interrupt by index
+ *  Returns: 0 if success, -ve if error
+ */
+int lwis_interrupt_get_gpio_irq(struct lwis_interrupt_list *list, int index, char *name,
+				int gpio_irq);
 
 /*
  * lwis_interrupt_set_event_info: Provides event-info structure for a given
@@ -96,7 +103,17 @@ int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index,
 				  size_t irq_events_num, uint32_t *int_reg_bits,
 				  size_t int_reg_bits_num, int64_t irq_src_reg,
 				  int64_t irq_reset_reg, int64_t irq_mask_reg, bool mask_toggled,
-				  int irq_reg_access_size);
+				  int irq_reg_access_size, int64_t *critical_events,
+				  size_t critical_events_num);
+
+/*
+ * lwis_interrupt_set_gpios_event_info: Provides event-info structure for a given
+ * interrupt based on index
+ *
+ * Returns: 0 on success
+ */
+int lwis_interrupt_set_gpios_event_info(struct lwis_interrupt_list *list, int index,
+					int64_t irq_event);
 
 /*
  * lwis_interrupt_event_enable: Handles masking and unmasking interrupts when
@@ -108,44 +125,6 @@ int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index,
  *          -EINVAL if event not known to this list
  */
 int lwis_interrupt_event_enable(struct lwis_interrupt_list *list, int64_t event_id, bool enabled);
-
-/*
- *  lwis_interrupt_request_all_default: Request all interupts in the list with
- *  the default IRQ handler provided in the C file.
- *  Returns: 0 if success, -ve if error
- */
-int lwis_interrupt_request_all_default(struct lwis_interrupt_list *list);
-
-/*
- *  lwis_interrupt_request_by_idx: Request interrupt by index, which also
- *  register an interrupt handler.
- *  Returns: 0 if success, -ve if error
- */
-int lwis_interrupt_request_by_idx(struct lwis_interrupt_list *list, int index,
-				  irq_handler_t handler, void *dev);
-
-/*
- *  lwis_interrupt_request_by_name: Request interrupt by name, which also
- *  register an interrupt handler.
- *  Returns: 0 if success, -ve if error
- */
-int lwis_interrupt_request_by_name(struct lwis_interrupt_list *list, char *name,
-				   irq_handler_t handler, void *dev);
-
-/*
- *  lwis_interrupt_free_all_default: Free all interrupts in the list.
- */
-void lwis_interrupt_free_all_default(struct lwis_interrupt_list *list);
-
-/*
- *  lwis_interrupt_free_by_idx: Free interrupt by index.
- */
-void lwis_interrupt_free_by_idx(struct lwis_interrupt_list *list, int index, void *dev);
-
-/*
- *  lwis_interrupt_free_by_name: Free interrupt by name.
- */
-void lwis_interrupt_free_by_name(struct lwis_interrupt_list *list, char *name, void *dev);
 
 /*
  *  lwis_interrupt_print: Debug function to print all the interrupts in the
