@@ -241,6 +241,9 @@ struct lwis_echo {
 #define LWIS_HW_IRQ_EVENT_FLAG (1ULL << 61)
 #define LWIS_PERIODIC_IO_EVENT_FLAG (1ULL << 60)
 
+// Status code for unsignaled LWIS fence
+#define LWIS_FENCE_STATUS_NOT_SIGNALED -1
+
 struct lwis_event_info {
 	// IOCTL Inputs
 	size_t payload_buffer_size;
@@ -396,6 +399,8 @@ struct lwis_dpm_qos_requirements {
 #define LWIS_DPM_CLK_UPDATE _IOW(LWIS_IOC_TYPE, 50, struct lwis_dpm_clk_settings)
 #define LWIS_DPM_QOS_UPDATE _IOW(LWIS_IOC_TYPE, 51, struct lwis_dpm_qos_requirements)
 #define LWIS_DPM_GET_CLOCK _IOW(LWIS_IOC_TYPE, 52, struct lwis_qos_setting)
+
+#define LWIS_FENCE_CREATE _IOWR(LWIS_IOC_TYPE, 60, int32_t)
 
 /*
  * Event payloads
