@@ -63,6 +63,8 @@ extern "C" {
 #define LWIS_MAX_NAME_STRING_LEN 32
 /* Maximum clock number defined in device tree. */
 #define LWIS_MAX_CLOCK_NUM 20
+/* Maximum reg number defined in device tree. */
+#define LWIS_MAX_REG_NUM 20
 
 struct lwis_clk_setting {
 	// clock name defined in device tree.
@@ -73,12 +75,25 @@ struct lwis_clk_setting {
 	uint32_t frequency;
 };
 
+struct lwis_reg_block {
+	// reg block name defined in device tree.
+	char name[LWIS_MAX_NAME_STRING_LEN];
+	// reg index stored in reg_list.block
+	int32_t reg_index;
+	// reg start address defined in device tree.
+	uint32_t start;
+	// reg block size defined in device tree.
+	uint32_t size;
+};
+
 struct lwis_device_info {
 	int32_t id;
 	int32_t type;
 	char name[LWIS_MAX_NAME_STRING_LEN];
 	struct lwis_clk_setting clks[LWIS_MAX_CLOCK_NUM];
 	int32_t num_clks;
+	struct lwis_reg_block regs[LWIS_MAX_REG_NUM];
+	int32_t num_regs;
 	int32_t transaction_worker_thread_pid;
 	int32_t periodic_io_thread_pid;
 };
