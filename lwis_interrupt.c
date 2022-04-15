@@ -345,7 +345,8 @@ int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index,
 				  const char *irq_reg_space, int irq_reg_bid, int64_t *irq_events,
 				  size_t irq_events_num, uint32_t *int_reg_bits,
 				  size_t int_reg_bits_num, int64_t irq_src_reg,
-				  int64_t irq_reset_reg, int64_t irq_mask_reg, bool mask_toggled,
+				  int64_t irq_reset_reg, int64_t irq_mask_reg,
+				  int64_t irq_overflow_reg, bool mask_toggled,
 				  int irq_reg_access_size, int64_t *critical_events,
 				  size_t critical_events_num)
 {
@@ -365,6 +366,7 @@ int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index,
 	list->irq[index].irq_src_reg = irq_src_reg;
 	list->irq[index].irq_reset_reg = irq_reset_reg;
 	list->irq[index].irq_mask_reg = irq_mask_reg;
+	list->irq[index].irq_overflow_reg = irq_overflow_reg;
 	list->irq[index].mask_toggled = mask_toggled;
 	list->irq[index].irq_reg_access_size = irq_reg_access_size;
 	/* Empty hash table for event infos */

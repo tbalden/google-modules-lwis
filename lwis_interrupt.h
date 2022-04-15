@@ -40,6 +40,8 @@ struct lwis_interrupt {
 	int64_t irq_reset_reg;
 	/* Offset of the mask register */
 	int64_t irq_mask_reg;
+	/* Offset of the overflow register */
+	int64_t irq_overflow_reg;
 	/* IRQ register access size, in case it is different from the bus
 	 * bitwidth */
 	int irq_reg_access_size;
@@ -102,7 +104,8 @@ int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index,
 				  const char *irq_reg_space, int irq_reg_bid, int64_t *irq_events,
 				  size_t irq_events_num, uint32_t *int_reg_bits,
 				  size_t int_reg_bits_num, int64_t irq_src_reg,
-				  int64_t irq_reset_reg, int64_t irq_mask_reg, bool mask_toggled,
+				  int64_t irq_reset_reg, int64_t irq_mask_reg,
+				  int64_t irq_overflow_reg, bool mask_toggled,
 				  int irq_reg_access_size, int64_t *critical_events,
 				  size_t critical_events_num);
 
