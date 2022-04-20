@@ -79,8 +79,6 @@ struct lwis_device_info {
 	char name[LWIS_MAX_NAME_STRING_LEN];
 	struct lwis_clk_setting clks[LWIS_MAX_CLOCK_NUM];
 	int32_t num_clks;
-	int32_t transaction_worker_thread_pid;
-	int32_t periodic_io_thread_pid;
 };
 
 enum lwis_dma_alloc_flags {

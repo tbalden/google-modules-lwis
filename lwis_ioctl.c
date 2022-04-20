@@ -159,9 +159,7 @@ static int ioctl_get_device_info(struct lwis_device *lwis_dev, struct lwis_devic
 	int i;
 	struct lwis_device_info k_info = { .id = lwis_dev->id,
 					   .type = lwis_dev->type,
-					   .num_clks = 0,
-					   .transaction_worker_thread_pid = -1,
-					   .periodic_io_thread_pid = -1 };
+					   .num_clks = 0 };
 	strlcpy(k_info.name, lwis_dev->name, LWIS_MAX_NAME_STRING_LEN);
 
 	if (lwis_dev->clocks) {
@@ -172,14 +170,6 @@ static int ioctl_get_device_info(struct lwis_device *lwis_dev, struct lwis_devic
 			k_info.clks[i].clk_index = i;
 			k_info.clks[i].frequency = 0;
 		}
-	}
-
-	if (lwis_dev->transaction_worker_thread) {
-		k_info.transaction_worker_thread_pid = lwis_dev->transaction_worker_thread->pid;
-	}
-
-	if (lwis_dev->periodic_io_worker_thread) {
-		k_info.periodic_io_thread_pid = lwis_dev->periodic_io_worker_thread->pid;
 	}
 
 	if (copy_to_user((void __user *)msg, &k_info, sizeof(k_info))) {
