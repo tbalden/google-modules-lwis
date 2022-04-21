@@ -660,6 +660,7 @@ error_parse_phy:
 
 static void parse_bitwidths(struct lwis_device *lwis_dev)
 {
+	int __maybe_unused ret;
 	struct device *dev;
 	struct device_node *dev_node;
 	u32 addr_bitwidth = 32;
@@ -668,12 +669,12 @@ static void parse_bitwidths(struct lwis_device *lwis_dev)
 	dev = &(lwis_dev->plat_dev->dev);
 	dev_node = dev->of_node;
 
-	of_property_read_u32(dev_node, "reg-addr-bitwidth", &addr_bitwidth);
+	ret = of_property_read_u32(dev_node, "reg-addr-bitwidth", &addr_bitwidth);
 #ifdef LWIS_DT_DEBUG
 	pr_info("Addr bitwidth set to%s: %d\n", ret ? " default" : "", addr_bitwidth);
 #endif
 
-	of_property_read_u32(dev_node, "reg-value-bitwidth", &value_bitwidth);
+	ret = of_property_read_u32(dev_node, "reg-value-bitwidth", &value_bitwidth);
 #ifdef LWIS_DT_DEBUG
 	pr_info("Value bitwidth set to%s: %d\n", ret ? " default" : "", value_bitwidth);
 #endif
