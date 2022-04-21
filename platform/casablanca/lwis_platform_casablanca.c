@@ -185,8 +185,8 @@ int lwis_platform_update_qos(struct lwis_device *lwis_dev, int value,
 			     int32_t clock_family)
 {
 	struct lwis_platform *platform;
-	struct exynos_pm_qos_request *qos_req;
-	int qos_class;
+	struct exynos_pm_qos_request __maybe_unused *qos_req;
+	int __maybe_unused qos_class;
 
 	if (!lwis_dev)
 		return -ENODEV;
