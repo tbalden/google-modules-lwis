@@ -65,6 +65,10 @@ static void lwis_ioctl_pr_err(struct lwis_device *lwis_dev, unsigned int ioctl_t
 		strlcpy(type_name, STRINGIFY(LWIS_BUFFER_DISENROLL), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_BUFFER_DISENROLL);
 		break;
+	case IOCTL_TO_ENUM(LWIS_BUFFER_CPU_ACCESS):
+		strlcpy(type_name, STRINGIFY(LWIS_BUFFER_CPU_ACCESS), sizeof(type_name));
+		exp_size = IOCTL_ARG_SIZE(LWIS_BUFFER_CPU_ACCESS);
+		break;
 	case IOCTL_TO_ENUM(LWIS_REG_IO):
 		strlcpy(type_name, STRINGIFY(LWIS_REG_IO), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_REG_IO);
@@ -155,7 +159,9 @@ static int ioctl_get_device_info(struct lwis_device *lwis_dev, struct lwis_devic
 	int i;
 	struct lwis_device_info k_info = { .id = lwis_dev->id,
 					   .type = lwis_dev->type,
-					   .num_clks = 0 };
+					   .num_clks = 0,
+					   .transaction_worker_thread_pid = -1,
+					   .periodic_io_thread_pid = -1 };
 	strlcpy(k_info.name, lwis_dev->name, LWIS_MAX_NAME_STRING_LEN);
 
 	if (lwis_dev->clocks) {
@@ -166,6 +172,14 @@ static int ioctl_get_device_info(struct lwis_device *lwis_dev, struct lwis_devic
 			k_info.clks[i].clk_index = i;
 			k_info.clks[i].frequency = 0;
 		}
+	}
+
+	if (lwis_dev->transaction_worker_thread) {
+		k_info.transaction_worker_thread_pid = lwis_dev->transaction_worker_thread->pid;
+	}
+
+	if (lwis_dev->periodic_io_worker_thread) {
+		k_info.periodic_io_thread_pid = lwis_dev->periodic_io_worker_thread->pid;
 	}
 
 	if (copy_to_user((void __user *)msg, &k_info, sizeof(k_info))) {
@@ -311,7 +325,7 @@ static int copy_io_entries(struct lwis_device *lwis_dev, struct lwis_io_entries 
 	buf_size = sizeof(struct lwis_io_entry) * k_msg->num_io_entries;
 	if (buf_size / sizeof(struct lwis_io_entry) != k_msg->num_io_entries) {
 		dev_err(lwis_dev->dev, "Failed to copy io_entries due to integer overflow.\n");
-		return -EINVAL;
+		return -EOVERFLOW;
 	}
 	io_entries = lwis_allocator_allocate(lwis_dev, buf_size);
 	if (!io_entries) {
@@ -546,6 +560,27 @@ static int ioctl_buffer_disenroll(struct lwis_client *lwis_client,
 	return 0;
 }
 
+static int ioctl_buffer_cpu_access(struct lwis_client *lwis_client,
+				   struct lwis_buffer_cpu_access_op __user *msg)
+{
+	int ret = 0;
+	struct lwis_buffer_cpu_access_op op;
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+
+	if (copy_from_user((void *)&op, (void __user *)msg, sizeof(op))) {
+		dev_err(lwis_dev->dev, "Failed to copy buffer CPU access operation from user\n");
+		return -EFAULT;
+	}
+
+	ret = lwis_buffer_cpu_access(lwis_client, &op);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Failed to prepare for cpu access for fd %d\n", op.fd);
+		return ret;
+	}
+
+	return 0;
+}
+
 static int ioctl_device_enable(struct lwis_client *lwis_client)
 {
 	int ret = 0;
@@ -566,9 +601,10 @@ static int ioctl_device_enable(struct lwis_client *lwis_client)
 		goto error_locked;
 	}
 
-	/* Clear event queue to make sure there is no stale event from
+	/* Clear event queues to make sure there is no stale event from
 	 * previous session */
 	lwis_client_event_queue_clear(lwis_client);
+	lwis_client_error_event_queue_clear(lwis_client);
 
 	ret = lwis_dev_power_up_locked(lwis_dev);
 	if (ret < 0) {
@@ -688,10 +724,11 @@ static int ioctl_device_reset(struct lwis_client *lwis_client, struct lwis_io_en
 		goto soft_reset_exit;
 	}
 
-	/* Clear event states, event queue and transactions for this client */
+	/* Clear event states, event queues and transactions for this client */
 	mutex_lock(&lwis_dev->client_lock);
 	lwis_client_event_states_clear(lwis_client);
 	lwis_client_event_queue_clear(lwis_client);
+	lwis_client_error_event_queue_clear(lwis_client);
 	device_enabled = lwis_dev->enabled;
 	mutex_unlock(&lwis_dev->client_lock);
 
@@ -773,6 +810,10 @@ static int ioctl_event_control_set(struct lwis_client *lwis_client,
 
 	/*  Copy event controls from user buffer. */
 	buf_size = sizeof(struct lwis_event_control) * k_msg.num_event_controls;
+	if (buf_size / sizeof(struct lwis_event_control) != k_msg.num_event_controls) {
+		dev_err(lwis_dev->dev, "Failed to copy event controls due to integer overflow.\n");
+		return -EOVERFLOW;
+	}
 	k_event_controls = kmalloc(buf_size, GFP_KERNEL);
 	if (!k_event_controls) {
 		dev_err(lwis_dev->dev, "Failed to allocate event controls\n");
@@ -911,6 +952,10 @@ static int construct_io_entry(struct lwis_client *client, struct lwis_io_entry *
 	struct lwis_device *lwis_dev = client->lwis_dev;
 
 	entry_size = num_io_entries * sizeof(struct lwis_io_entry);
+	if (entry_size / sizeof(struct lwis_io_entry) != num_io_entries) {
+		dev_err(lwis_dev->dev, "Failed to prepare io entries due to integer overflow\n");
+		return -EOVERFLOW;
+	}
 	k_entries = lwis_allocator_allocate(lwis_dev, entry_size);
 	if (!k_entries) {
 		dev_err(lwis_dev->dev, "Failed to allocate io entries\n");
@@ -1208,6 +1253,10 @@ static int ioctl_dpm_clk_update(struct lwis_device *lwis_dev,
 	}
 
 	buf_size = sizeof(struct lwis_clk_setting) * k_msg.num_settings;
+	if (buf_size / sizeof(struct lwis_clk_setting) != k_msg.num_settings) {
+		dev_err(lwis_dev->dev, "Failed to copy clk settings due to integer overflow.\n");
+		return -EOVERFLOW;
+	}
 	clk_settings = kmalloc(buf_size, GFP_KERNEL);
 	if (!clk_settings) {
 		dev_err(lwis_dev->dev, "Failed to allocate clock settings\n");
@@ -1247,6 +1296,10 @@ static int ioctl_dpm_qos_update(struct lwis_device *lwis_dev,
 
 	// Copy qos settings from user buffer.
 	buf_size = sizeof(struct lwis_qos_setting) * k_msg.num_settings;
+	if (buf_size / sizeof(struct lwis_qos_setting) != k_msg.num_settings) {
+		dev_err(lwis_dev->dev, "Failed to copy qos settings due to integer overflow.\n");
+		return -EOVERFLOW;
+	}
 	k_qos_settings = kmalloc(buf_size, GFP_KERNEL);
 	if (!k_qos_settings) {
 		dev_err(lwis_dev->dev, "Failed to allocate qos settings\n");
@@ -1351,6 +1404,10 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type, unsig
 	case LWIS_BUFFER_DISENROLL:
 		ret = ioctl_buffer_disenroll(lwis_client,
 					     (struct lwis_enrolled_buffer_info *)param);
+		break;
+	case LWIS_BUFFER_CPU_ACCESS:
+		ret = ioctl_buffer_cpu_access(lwis_client,
+					      (struct lwis_buffer_cpu_access_op *)param);
 		break;
 	case LWIS_REG_IO:
 		ret = ioctl_reg_io(lwis_dev, (struct lwis_io_entries *)param);

@@ -148,8 +148,9 @@ static int lwis_cleanup_client(struct lwis_client *lwis_client)
 	/* Clear event states for this client */
 	lwis_client_event_states_clear(lwis_client);
 
-	/* Clear the event queue */
+	/* Clear the event queues */
 	lwis_client_event_queue_clear(lwis_client);
+	lwis_client_error_event_queue_clear(lwis_client);
 
 	/* Clean up all periodic io state for the client */
 	lwis_periodic_io_client_cleanup(lwis_client);

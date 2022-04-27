@@ -353,7 +353,8 @@ static int check_event_control_flags(struct lwis_client *lwis_client, int64_t ev
 	if (EVENT_OWNER_DEVICE_ID(event_id) == lwis_client->lwis_dev->id) {
 		if (event_id & LWIS_HW_IRQ_EVENT_FLAG &&
 		    (new_flags & LWIS_EVENT_CONTROL_FLAG_QUEUE_ENABLE) &&
-		    !(new_flags & LWIS_EVENT_CONTROL_FLAG_IRQ_ENABLE)) {
+		    !(new_flags & LWIS_EVENT_CONTROL_FLAG_IRQ_ENABLE) &&
+		    !(new_flags & LWIS_EVENT_CONTROL_FLAG_IRQ_ENABLE_ONCE)) {
 			dev_err(lwis_client->lwis_dev->dev,
 				"QUEUE_ENABLE without IRQ_ENABLE is not allowed for HW event: 0x%llx\n",
 				event_id);
@@ -682,14 +683,18 @@ int lwis_device_event_flags_updated(struct lwis_device *lwis_dev, int64_t event_
 	/* Disable IRQs and lock the lock */
 	spin_lock_irqsave(&lwis_dev->lock, flags);
 	/* Are we turning on the event? */
-	if (!(old_flags & LWIS_EVENT_CONTROL_FLAG_IRQ_ENABLE) &&
-	    (new_flags & LWIS_EVENT_CONTROL_FLAG_IRQ_ENABLE)) {
+	if ((!(old_flags & LWIS_EVENT_CONTROL_FLAG_IRQ_ENABLE) ||
+	     !(old_flags & LWIS_EVENT_CONTROL_FLAG_IRQ_ENABLE_ONCE)) &&
+	    ((new_flags & LWIS_EVENT_CONTROL_FLAG_IRQ_ENABLE) ||
+	     (new_flags & LWIS_EVENT_CONTROL_FLAG_IRQ_ENABLE_ONCE))) {
 		state->enable_counter++;
 		event_enabled = true;
 		call_enable_cb = (state->enable_counter == 1);
 
-	} else if ((old_flags & LWIS_EVENT_CONTROL_FLAG_IRQ_ENABLE) &&
-		   !(new_flags & LWIS_EVENT_CONTROL_FLAG_IRQ_ENABLE)) {
+	} else if (((old_flags & LWIS_EVENT_CONTROL_FLAG_IRQ_ENABLE) ||
+		    (old_flags & LWIS_EVENT_CONTROL_FLAG_IRQ_ENABLE_ONCE)) &&
+		   (!(new_flags & LWIS_EVENT_CONTROL_FLAG_IRQ_ENABLE) ||
+		    !(new_flags & LWIS_EVENT_CONTROL_FLAG_IRQ_ENABLE_ONCE))) {
 		state->enable_counter--;
 		event_enabled = false;
 		call_enable_cb = (state->enable_counter == 0);

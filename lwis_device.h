@@ -17,6 +17,7 @@
 #include <linux/hashtable.h>
 #include <linux/idr.h>
 #include <linux/kernel.h>
+#include <linux/kthread.h>
 #include <linux/list.h>
 #include <linux/mutex.h>
 #include <linux/platform_device.h>
@@ -205,8 +206,6 @@ struct lwis_device {
 	DECLARE_HASHTABLE(event_states, EVENT_HASH_BITS);
 	/* Virtual function table for sub classes */
 	struct lwis_device_subclass_operations vops;
-	/* Does the device have IOMMU. TODO: Move to platform */
-	bool has_iommu;
 	/* Mutex used to synchronize register access between clients */
 	struct mutex reg_rw_lock;
 	/* Heartbeat timer structure */
@@ -252,13 +251,21 @@ struct lwis_device {
 
 	/* Power management hibernation state of the device */
 	int pm_hibernation;
+
 	/* Is device read only */
 	bool is_read_only;
 	/* Adjust thread priority */
-	int adjust_thread_priority;
+	u32 transaction_thread_priority;
+	u32 periodic_io_thread_priority;
 
 	/* LWIS allocator block manager */
 	struct lwis_allocator_block_mgr *block_mgr;
+
+	/* Worker thread */
+	struct kthread_worker transaction_worker;
+	struct task_struct *transaction_worker_thread;
+	struct kthread_worker periodic_io_worker;
+	struct task_struct *periodic_io_worker_thread;
 };
 
 /*
@@ -288,8 +295,6 @@ struct lwis_client {
 	DECLARE_HASHTABLE(transaction_list, TRANSACTION_HASH_BITS);
 	/* Transaction task-related variables */
 	struct tasklet_struct transaction_tasklet;
-	struct workqueue_struct *transaction_wq;
-	struct work_struct transaction_work;
 	/* Spinlock used to synchronize access to transaction data structs */
 	spinlock_t transaction_lock;
 	/* List of transaction triggers */
@@ -299,9 +304,9 @@ struct lwis_client {
 	int64_t transaction_counter;
 	/* Hash table of hrtimer keyed by time out duration */
 	DECLARE_HASHTABLE(timer_list, PERIODIC_IO_HASH_BITS);
-	/* Workqueue variables for periodic io */
-	struct workqueue_struct *periodic_io_wq;
-	struct work_struct periodic_io_work;
+	/* Work item */
+	struct kthread_work transaction_work;
+	struct kthread_work periodic_io_work;
 	/* Spinlock used to synchronize access to periodic io data structs */
 	spinlock_t periodic_io_lock;
 	/* Queue of all periodic_io pending processing */
