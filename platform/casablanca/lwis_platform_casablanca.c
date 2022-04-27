@@ -83,6 +83,7 @@ static int lwis_iommu_fault_handler(struct iommu_fault *fault, void *param)
 int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 {
 	int ret;
+	int iommus_len = 0;
 	struct lwis_platform *platform;
 
 	const int core_clock_qos = 67000;
@@ -102,7 +103,8 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 		return ret;
 	}
 
-	if (lwis_dev->has_iommu) {
+	if (of_find_property(lwis_dev->plat_dev->dev.of_node, "iommus", &iommus_len) &&
+	    iommus_len) {
 		/* Activate IOMMU for the platform device */
 		ret = iommu_register_device_fault_handler(&lwis_dev->plat_dev->dev,
 							  lwis_iommu_fault_handler, lwis_dev);
@@ -154,6 +156,7 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 
 int lwis_platform_device_disable(struct lwis_device *lwis_dev)
 {
+	int iommus_len;
 	struct lwis_platform *platform;
 
 	if (!lwis_dev)
@@ -172,7 +175,8 @@ int lwis_platform_device_disable(struct lwis_device *lwis_dev)
 
 	lwis_platform_remove_qos(lwis_dev);
 
-	if (lwis_dev->has_iommu) {
+	if (of_find_property(lwis_dev->plat_dev->dev.of_node, "iommus", &iommus_len) &&
+	    iommus_len) {
 		/* Deactivate IOMMU */
 		iommu_unregister_device_fault_handler(&lwis_dev->plat_dev->dev);
 	}
