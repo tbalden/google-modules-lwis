@@ -277,6 +277,38 @@ struct lwis_event_control_list {
 	struct lwis_event_control *event_controls;
 };
 
+enum lwis_transaction_trigger_node_types {
+	LWIS_TRIGGER_EVENT,
+	LWIS_TRIGGER_FENCE,
+	LWIS_TRIGGER_FENCE_PLACEHOLDER
+};
+
+struct lwis_transaction_trigger_event {
+	int64_t id;
+	int64_t counter;
+};
+
+struct lwis_transaction_trigger_node {
+	int32_t type; //lwis_transaction_trigger_node_types
+	union {
+		int32_t fence_fd;
+		struct lwis_transaction_trigger_event event;
+	};
+};
+
+enum lwis_transaction_trigger_node_operator {
+	LWIS_TRIGGER_NODE_OPERATOR_NONE,
+	LWIS_TRIGGER_NODE_OPERATOR_AND,
+	LWIS_TRIGGER_NODE_OPERATOR_OR,
+};
+
+#define LWIS_TRIGGER_NODES_MAX_NUM 16
+struct lwis_transaction_trigger_condition {
+	size_t num_nodes;
+	int32_t operator_type; //lwis_transaction_trigger_node_operator
+	struct lwis_transaction_trigger_node trigger_nodes[LWIS_TRIGGER_NODES_MAX_NUM];
+};
+
 // Invalid ID for Transaction id and Periodic IO id
 #define LWIS_ID_INVALID (-1LL)
 #define LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE (-1LL)
@@ -285,6 +317,7 @@ struct lwis_transaction_info {
 	// Input
 	int64_t trigger_event_id;
 	int64_t trigger_event_counter;
+	struct lwis_transaction_trigger_condition trigger_condition;
 	size_t num_io_entries;
 	struct lwis_io_entry *io_entries;
 	bool run_in_event_context;

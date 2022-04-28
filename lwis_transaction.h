@@ -16,6 +16,7 @@
 /* LWIS forward declarations */
 struct lwis_device;
 struct lwis_client;
+struct lwis_fence;
 
 /* Transaction entry. Each entry belongs to two queues:
  * 1) Event list: Transactions are sorted by event IDs. This is to search for
@@ -53,6 +54,9 @@ int lwis_transaction_client_cleanup(struct lwis_client *client);
 int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
 				   int64_t event_counter, struct list_head *pending_events,
 				   bool in_irq);
+void lwis_transaction_fence_trigger(struct lwis_client *client, struct lwis_fence *fence,
+				    struct list_head *transaction_list);
+
 int lwis_transaction_cancel(struct lwis_client *client, int64_t id);
 
 void lwis_transaction_free(struct lwis_device *lwis_dev, struct lwis_transaction *transaction);
