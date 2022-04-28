@@ -19,8 +19,10 @@
 #include <linux/workqueue.h>
 
 #include "lwis_allocator.h"
+#include "lwis_commands.h"
 #include "lwis_device.h"
 #include "lwis_event.h"
+#include "lwis_fence.h"
 #include "lwis_io_entry.h"
 #include "lwis_ioreg.h"
 #include "lwis_util.h"
@@ -511,6 +513,19 @@ int lwis_transaction_client_cleanup(struct lwis_client *client)
 	return 0;
 }
 
+static bool lwis_transaction_triggered_by_fence(struct lwis_transaction *transaction)
+{
+	if (transaction->info.trigger_condition.num_nodes == 0) {
+		return false;
+	}
+
+	if (transaction->info.trigger_condition.num_nodes == 1 &&
+	    transaction->info.trigger_condition.trigger_nodes[0].type == LWIS_TRIGGER_EVENT) {
+		return false;
+	}
+	return true;
+}
+
 static int check_transaction_param_locked(struct lwis_client *client,
 					  struct lwis_transaction *transaction,
 					  bool allow_counter_eq)
@@ -518,6 +533,8 @@ static int check_transaction_param_locked(struct lwis_client *client,
 	struct lwis_device_event_state *event_state;
 	struct lwis_transaction_info *info = &transaction->info;
 	struct lwis_device *lwis_dev = client->lwis_dev;
+	int32_t fd_or_err;
+	int ret = 0;
 
 	if (!client) {
 		pr_err("Client is NULL while checking transaction parameter.\n");
@@ -531,6 +548,31 @@ static int check_transaction_param_locked(struct lwis_client *client,
 
 	/* Initialize event counter return value  */
 	info->current_trigger_event_counter = -1LL;
+
+	/* If triggered by a lwis_fence */
+	if (lwis_transaction_triggered_by_fence(transaction)) {
+		// TODO(bian@): add supports for nested trigger expression.
+		if (transaction->info.trigger_condition.num_nodes > 1) {
+			dev_err(lwis_dev->dev, "Nested trigger expression is not supported yet\n");
+			return -EINVAL;
+		}
+
+		if (transaction->info.trigger_condition.trigger_nodes[0].type ==
+		    LWIS_TRIGGER_FENCE_PLACEHOLDER) {
+			fd_or_err = lwis_fence_create(lwis_dev);
+			if (fd_or_err < 0) {
+				return fd_or_err;
+			}
+			transaction->info.trigger_condition.trigger_nodes[0].fence_fd = fd_or_err;
+		}
+
+		ret = lwis_trigger_fence_add_transaction(
+			transaction->info.trigger_condition.trigger_nodes[0].fence_fd, client,
+			transaction);
+		if (ret) {
+			return ret;
+		}
+	}
 
 	/* Look for the trigger event state, if specified */
 	if (info->trigger_event_id != LWIS_EVENT_ID_NONE) {
@@ -627,6 +669,13 @@ static int queue_transaction_locked(struct lwis_client *client,
 {
 	struct lwis_transaction_event_list *event_list;
 	struct lwis_transaction_info *info = &transaction->info;
+
+	if (lwis_transaction_triggered_by_fence(transaction)) {
+		/* Trigger by lwis_fence, nothing to be done here */
+		info->submission_timestamp_ns = ktime_to_ns(ktime_get());
+		client->transaction_counter++;
+		return 0;
+	}
 
 	if (info->trigger_event_id == LWIS_EVENT_ID_NONE) {
 		/* Immediate trigger. */
@@ -803,6 +852,41 @@ int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
 	spin_unlock_irqrestore(&client->transaction_lock, flags);
 
 	return 0;
+}
+
+void lwis_transaction_fence_trigger(struct lwis_client *client, struct lwis_fence *fence,
+				    struct list_head *transaction_list)
+{
+	unsigned long flags = 0;
+	struct lwis_transaction *transaction;
+	struct list_head *it_tran, *it_tran_tmp;
+
+	if (list_empty(transaction_list)) {
+		return;
+	}
+
+	spin_lock_irqsave(&client->transaction_lock, flags);
+	list_for_each_safe (it_tran, it_tran_tmp, transaction_list) {
+		transaction = list_entry(it_tran, struct lwis_transaction, event_list_node);
+		list_del(&transaction->event_list_node);
+		if (fence->status == 0) {
+			/* TODO(bian@): Ignore the transaction context flags for now. */
+			list_add_tail(&transaction->process_queue_node,
+				      &client->transaction_process_queue);
+		} else {
+			cancel_transaction(client->lwis_dev, transaction, -ECANCELED, NULL);
+		}
+		dev_info(client->lwis_dev->dev, "lwis_fence fd-%d triggered transaction id %llu",
+			fence->fd, transaction->info.id);
+		fput(fence->fp);
+	}
+
+	/* Schedule deferred transactions */
+	if (!list_empty(&client->transaction_process_queue)) {
+		kthread_queue_work(&client->lwis_dev->transaction_worker,
+				   &client->transaction_work);
+	}
+	spin_unlock_irqrestore(&client->transaction_lock, flags);
 }
 
 /* Calling this function requires holding the client's transaction_lock. */
