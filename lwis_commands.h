@@ -63,6 +63,8 @@ extern "C" {
 #define LWIS_MAX_NAME_STRING_LEN 32
 /* Maximum clock number defined in device tree. */
 #define LWIS_MAX_CLOCK_NUM 20
+/* Maximum reg number defined in device tree. */
+#define LWIS_MAX_REG_NUM 20
 
 struct lwis_clk_setting {
 	// clock name defined in device tree.
@@ -73,12 +75,27 @@ struct lwis_clk_setting {
 	uint32_t frequency;
 };
 
+struct lwis_reg_block {
+	// reg block name defined in device tree.
+	char name[LWIS_MAX_NAME_STRING_LEN];
+	// reg index stored in reg_list.block
+	int32_t reg_index;
+	// reg start address defined in device tree.
+	uint32_t start;
+	// reg block size defined in device tree.
+	uint32_t size;
+};
+
 struct lwis_device_info {
 	int32_t id;
 	int32_t type;
 	char name[LWIS_MAX_NAME_STRING_LEN];
 	struct lwis_clk_setting clks[LWIS_MAX_CLOCK_NUM];
 	int32_t num_clks;
+	struct lwis_reg_block regs[LWIS_MAX_REG_NUM];
+	int32_t num_regs;
+	int32_t transaction_worker_thread_pid;
+	int32_t periodic_io_thread_pid;
 };
 
 enum lwis_dma_alloc_flags {
@@ -116,6 +133,15 @@ struct lwis_buffer_info {
 struct lwis_enrolled_buffer_info {
 	int32_t fd;
 	uint64_t dma_vaddr;
+};
+
+struct lwis_buffer_cpu_access_op {
+	int32_t fd;
+	bool start;
+	bool read;
+	bool write;
+	uint32_t offset;
+	size_t len;
 };
 
 enum lwis_io_entry_types {
@@ -346,6 +372,7 @@ struct lwis_dpm_qos_requirements {
 #define LWIS_GET_DEVICE_INFO _IOWR(LWIS_IOC_TYPE, 1, struct lwis_device_info)
 #define LWIS_BUFFER_ENROLL _IOWR(LWIS_IOC_TYPE, 2, struct lwis_buffer_info)
 #define LWIS_BUFFER_DISENROLL _IOWR(LWIS_IOC_TYPE, 3, struct lwis_enrolled_buffer_info)
+#define LWIS_BUFFER_CPU_ACCESS _IOWR(LWIS_IOC_TYPE, 4, struct lwis_buffer_cpu_access_op)
 #define LWIS_DEVICE_ENABLE _IO(LWIS_IOC_TYPE, 6)
 #define LWIS_DEVICE_DISABLE _IO(LWIS_IOC_TYPE, 7)
 #define LWIS_BUFFER_ALLOC _IOWR(LWIS_IOC_TYPE, 8, struct lwis_alloc_buffer_info)

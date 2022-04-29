@@ -65,6 +65,10 @@ static void lwis_ioctl_pr_err(struct lwis_device *lwis_dev, unsigned int ioctl_t
 		strlcpy(type_name, STRINGIFY(LWIS_BUFFER_DISENROLL), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_BUFFER_DISENROLL);
 		break;
+	case IOCTL_TO_ENUM(LWIS_BUFFER_CPU_ACCESS):
+		strlcpy(type_name, STRINGIFY(LWIS_BUFFER_CPU_ACCESS), sizeof(type_name));
+		exp_size = IOCTL_ARG_SIZE(LWIS_BUFFER_CPU_ACCESS);
+		break;
 	case IOCTL_TO_ENUM(LWIS_REG_IO):
 		strlcpy(type_name, STRINGIFY(LWIS_REG_IO), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_REG_IO);
@@ -155,17 +159,53 @@ static int ioctl_get_device_info(struct lwis_device *lwis_dev, struct lwis_devic
 	int i;
 	struct lwis_device_info k_info = { .id = lwis_dev->id,
 					   .type = lwis_dev->type,
-					   .num_clks = 0 };
+					   .num_clks = 0,
+					   .num_regs = 0,
+					   .transaction_worker_thread_pid = -1,
+					   .periodic_io_thread_pid = -1 };
 	strlcpy(k_info.name, lwis_dev->name, LWIS_MAX_NAME_STRING_LEN);
 
 	if (lwis_dev->clocks) {
 		k_info.num_clks = lwis_dev->clocks->count;
 		for (i = 0; i < lwis_dev->clocks->count; i++) {
+			if (i >= LWIS_MAX_CLOCK_NUM) {
+				dev_err(lwis_dev->dev,
+					"Clock count larger than LWIS_MAX_CLOCK_NUM\n");
+				break;
+			}
 			strlcpy(k_info.clks[i].name, lwis_dev->clocks->clk[i].name,
 				LWIS_MAX_NAME_STRING_LEN);
 			k_info.clks[i].clk_index = i;
 			k_info.clks[i].frequency = 0;
 		}
+	}
+
+	if (lwis_dev->type == DEVICE_TYPE_IOREG) {
+		struct lwis_ioreg_device *ioreg_dev;
+		ioreg_dev = container_of(lwis_dev, struct lwis_ioreg_device, base_dev);
+		if (ioreg_dev->reg_list.count > 0) {
+			k_info.num_regs = ioreg_dev->reg_list.count;
+			for (i = 0; i < ioreg_dev->reg_list.count; i++) {
+				if (i >= LWIS_MAX_REG_NUM) {
+					dev_err(lwis_dev->dev,
+						"Reg count larger than LWIS_MAX_REG_NUM\n");
+					break;
+				}
+				strlcpy(k_info.regs[i].name, ioreg_dev->reg_list.block[i].name,
+					LWIS_MAX_NAME_STRING_LEN);
+				k_info.regs[i].reg_index = i;
+				k_info.regs[i].start = ioreg_dev->reg_list.block[i].start;
+				k_info.regs[i].size = ioreg_dev->reg_list.block[i].size;
+			}
+		}
+	}
+
+	if (lwis_dev->transaction_worker_thread) {
+		k_info.transaction_worker_thread_pid = lwis_dev->transaction_worker_thread->pid;
+	}
+
+	if (lwis_dev->periodic_io_worker_thread) {
+		k_info.periodic_io_thread_pid = lwis_dev->periodic_io_worker_thread->pid;
 	}
 
 	if (copy_to_user((void __user *)msg, &k_info, sizeof(k_info))) {
@@ -542,6 +582,27 @@ static int ioctl_buffer_disenroll(struct lwis_client *lwis_client,
 	}
 
 	kfree(buffer);
+
+	return 0;
+}
+
+static int ioctl_buffer_cpu_access(struct lwis_client *lwis_client,
+				   struct lwis_buffer_cpu_access_op __user *msg)
+{
+	int ret = 0;
+	struct lwis_buffer_cpu_access_op op;
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+
+	if (copy_from_user((void *)&op, (void __user *)msg, sizeof(op))) {
+		dev_err(lwis_dev->dev, "Failed to copy buffer CPU access operation from user\n");
+		return -EFAULT;
+	}
+
+	ret = lwis_buffer_cpu_access(lwis_client, &op);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Failed to prepare for cpu access for fd %d\n", op.fd);
+		return ret;
+	}
 
 	return 0;
 }
@@ -1369,6 +1430,10 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type, unsig
 	case LWIS_BUFFER_DISENROLL:
 		ret = ioctl_buffer_disenroll(lwis_client,
 					     (struct lwis_enrolled_buffer_info *)param);
+		break;
+	case LWIS_BUFFER_CPU_ACCESS:
+		ret = ioctl_buffer_cpu_access(lwis_client,
+					      (struct lwis_buffer_cpu_access_op *)param);
 		break;
 	case LWIS_REG_IO:
 		ret = ioctl_reg_io(lwis_dev, (struct lwis_io_entries *)param);

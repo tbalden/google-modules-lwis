@@ -319,6 +319,46 @@ struct lwis_enrolled_buffer *lwis_client_enrolled_buffer_find(struct lwis_client
 	return NULL;
 }
 
+int lwis_buffer_cpu_access(struct lwis_client *lwis_client, struct lwis_buffer_cpu_access_op *op)
+{
+	struct dma_buf *dma_buf;
+	enum dma_data_direction dma_direction;
+	int ret = 0;
+
+	if (!lwis_client) {
+		pr_err("BufferCpuAccess: LWIS client is NULL\n");
+		return -ENODEV;
+	}
+
+	if (op->read && op->write) {
+		dma_direction = DMA_BIDIRECTIONAL;
+	} else if (op->read) {
+		dma_direction = DMA_FROM_DEVICE;
+	} else if (op->write) {
+		dma_direction = DMA_TO_DEVICE;
+	} else {
+		dma_direction = DMA_NONE;
+	}
+	if (!valid_dma_direction(dma_direction)) {
+		dev_err(lwis_client->lwis_dev->dev, "BufferCpuAccess: dma_direction is invalid\n");
+		return -EINVAL;
+	}
+
+	dma_buf = dma_buf_get(op->fd);
+	if (IS_ERR_OR_NULL(dma_buf)) {
+		pr_err("Could not get dma buffer for fd: %d", op->fd);
+		return -EINVAL;
+	}
+
+	if (op->start) {
+		ret = dma_buf_begin_cpu_access_partial(dma_buf, dma_direction, op->offset, op->len);
+	} else {
+		ret = dma_buf_end_cpu_access_partial(dma_buf, dma_direction, op->offset, op->len);
+	}
+	dma_buf_put(dma_buf);
+	return ret;
+}
+
 int lwis_client_enrolled_buffers_clear(struct lwis_client *lwis_client)
 {
 	/* Our hash table iterator */
