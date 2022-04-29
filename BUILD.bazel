@@ -8,23 +8,27 @@
 
 load("//build/kernel/kleaf:kernel.bzl", "kernel_module")
 
-kernel_module(
-    name = "lwis.cloudripper",
+[kernel_module(
+    name = "lwis.{}".format(kernel_build),
     srcs = glob([
         "**/*.c",
         "**/*.h",
         "Kbuild",
     ]) + [
-        "//private/google-modules/soc-modules:gs101_soc_headers",
+        "//private/google-modules/soc-modules:{}".format(soc_headers),
     ],
     outs = [
         "lwis.ko",
     ],
-    kernel_build = "//private/google-modules/soc-modules:slider",
+    kernel_build = "//private/google-modules/soc-modules:{}".format(kernel_build),
     kernel_module_deps = [
-        "//private/google-modules/soc-modules:gs101_soc",
+        "//private/google-modules/soc-modules:{}".format(soc),
     ],
     visibility = [
         "//private/google-modules/soc-modules:__pkg__",
     ],
-)
+) for kernel_build, soc, soc_headers in [
+    ("slider", "gs101_soc", "gs101_soc_headers"),
+    ("zuma_emulator", "zuma_soc_emulator", "soc_headers"),
+    ("zuma_hybrid", "zuma_soc_hybrid", "soc_headers"),
+]]
