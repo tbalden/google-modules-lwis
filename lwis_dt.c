@@ -959,6 +959,27 @@ static int parse_thread_priority(struct lwis_device *lwis_dev)
 	return 0;
 }
 
+static int parse_i2c_lock_group_id(struct lwis_device *lwis_dev)
+{
+	struct device_node *dev_node;
+	int ret;
+
+	dev_node = lwis_dev->plat_dev->dev.of_node;
+	lwis_dev->i2c_lock_group_id = MAX_I2C_LOCK_NUM - 1;
+
+	ret = of_property_read_u32(dev_node, "i2c-lock-group-id", &lwis_dev->i2c_lock_group_id);
+	if (ret && ret != -EINVAL) {
+		pr_err("i2c-lock-group-id value wrong\n");
+		return ret;
+	}
+	if (lwis_dev->i2c_lock_group_id >= MAX_I2C_LOCK_NUM - 1) {
+		pr_err("i2c-lock-group-id larger than MAX_I2C_LOCK_NUM - 1\n");
+		return -EOVERFLOW;
+	}
+
+	return 0;
+}
+
 int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 {
 	struct device *dev;
@@ -1059,14 +1080,18 @@ int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 
 	ret = parse_pm_hibernation(lwis_dev);
 	if (ret) {
-		pr_err("Error parsing pm hibernation");
+		pr_err("Error parsing pm hibernation\n");
+		return ret;
+	}
+
+	ret = parse_i2c_lock_group_id(lwis_dev);
+	if (ret) {
+		pr_err("Error parsing i2c lock group id\n");
 		return ret;
 	}
 
 	parse_access_mode(lwis_dev);
-
 	parse_thread_priority(lwis_dev);
-
 	parse_bitwidths(lwis_dev);
 
 	lwis_dev->bts_scenario_name = NULL;
