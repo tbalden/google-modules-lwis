@@ -15,17 +15,17 @@ load("//build/kernel/kleaf:kernel.bzl", "kernel_module")
         "**/*.h",
         "Kbuild",
     ]) + [
-        "//private/google-modules/soc-modules:{}".format(soc_headers),
+        "//private/google-modules/soc/gs:{}".format(soc_headers),
     ],
     outs = [
         "lwis.ko",
     ],
-    kernel_build = "//private/google-modules/soc-modules:{}".format(kernel_build),
+    kernel_build = "//private/google-modules/soc/gs:{}".format(kernel_build),
     kernel_module_deps = [
-        "//private/google-modules/soc-modules:{}".format(soc),
+        "//private/google-modules/soc/gs:{}".format(soc),
     ],
     visibility = [
-        "//private/google-modules/soc-modules:__pkg__",
+        "//private/google-modules/soc/gs:__pkg__",
     ],
 ) for kernel_build, soc, soc_headers in [
     ("slider", "gs101_soc", "gs101_soc_headers"),
