@@ -222,7 +222,7 @@ static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 	struct lwis_client_event_state *event_state;
 	struct lwis_single_event_info *event;
 	struct list_head *p;
-	uint64_t source_value, reset_value = 0;
+	uint64_t source_value, overflow_value, reset_value = 0;
 	struct lwis_client *lwis_client;
 	struct list_head *t, *n;
 #ifdef LWIS_INTERRUPT_DEBUG
@@ -230,7 +230,7 @@ static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 #endif
 	unsigned long flags;
 
-	/* Read the mask register */
+	/* Read IRQ status register */
 	ret = lwis_device_single_register_read(irq->lwis_dev, irq->irq_reg_bid, irq->irq_src_reg,
 					       &source_value, irq->irq_reg_access_size);
 	if (ret) {
@@ -246,6 +246,36 @@ static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 		dev_err(irq->lwis_dev->dev, "%s: Failed to write IRQ reset register: %d\n",
 			irq->name, ret);
 		goto error;
+	}
+
+	if (irq->irq_overflow_reg) {
+		/* Read the overflow register */
+		ret = lwis_device_single_register_read(irq->lwis_dev, irq->irq_reg_bid,
+						       irq->irq_overflow_reg, &overflow_value,
+						       irq->irq_reg_access_size);
+		if (ret) {
+			dev_err(irq->lwis_dev->dev,
+				"%s: Failed to read IRQ overflow register: %d\n", irq->name, ret);
+			goto error;
+		}
+
+		/* Overflow is triggered */
+		if (overflow_value != 0) {
+			dev_warn(irq->lwis_dev->dev,
+				 "IRQ(%s) overflow register(0x%llx) value(%lld) is detected\n",
+				 irq->name, irq->irq_overflow_reg, overflow_value);
+			/* Write back to the overflow register */
+			ret = lwis_device_single_register_write(irq->lwis_dev, irq->irq_reg_bid,
+								irq->irq_overflow_reg,
+								overflow_value,
+								irq->irq_reg_access_size);
+			if (ret) {
+				dev_err(irq->lwis_dev->dev,
+					"%s: Failed to write IRQ overflow register: %d\n",
+					irq->name, ret);
+				goto error;
+			}
+		}
 	}
 
 	/* Nothing is triggered, just return */
