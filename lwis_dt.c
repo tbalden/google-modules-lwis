@@ -965,15 +965,20 @@ static int parse_i2c_lock_group_id(struct lwis_device *lwis_dev)
 	int ret;
 
 	dev_node = lwis_dev->plat_dev->dev.of_node;
+	/* Set i2c_lock_group_id value to default */
 	lwis_dev->i2c_lock_group_id = MAX_I2C_LOCK_NUM - 1;
 
 	ret = of_property_read_u32(dev_node, "i2c-lock-group-id", &lwis_dev->i2c_lock_group_id);
-	if (ret && ret != -EINVAL) {
+	/* If no property in device tree, just return to use default */
+	if (ret == -EINVAL) {
+		return 0;
+	}
+	if (ret) {
 		pr_err("i2c-lock-group-id value wrong\n");
 		return ret;
 	}
 	if (lwis_dev->i2c_lock_group_id >= MAX_I2C_LOCK_NUM - 1) {
-		pr_err("i2c-lock-group-id larger than MAX_I2C_LOCK_NUM - 1\n");
+		pr_err("i2c-lock-group-id need smaller than MAX_I2C_LOCK_NUM - 1\n");
 		return -EOVERFLOW;
 	}
 
