@@ -197,8 +197,6 @@ struct lwis_device {
 	int enabled;
 	/* Mutex used to synchronize access between clients */
 	struct mutex client_lock;
-	/* Mutex shared by the same group id's I2C devices */
-	struct mutex *group_i2c_lock;
 	/* Spinlock used to synchronize access to the device struct */
 	spinlock_t lock;
 	/* List of clients opened for this device */
@@ -258,8 +256,6 @@ struct lwis_device {
 	/* Adjust thread priority */
 	u32 transaction_thread_priority;
 	u32 periodic_io_thread_priority;
-	/* Group id for I2C lock */
-	u32 i2c_lock_group_id;
 
 	/* LWIS allocator block manager */
 	struct lwis_allocator_block_mgr *block_mgr;
