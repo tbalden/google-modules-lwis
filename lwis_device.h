@@ -302,6 +302,8 @@ struct lwis_client {
 	struct list_head transaction_process_queue;
 	/* Transaction counter, which also provides transacton ID */
 	int64_t transaction_counter;
+	/* Hash table of pending transactions keyed by transaction id */
+	DECLARE_HASHTABLE(pending_transactions, TRANSACTION_HASH_BITS);
 	/* Hash table of hrtimer keyed by time out duration */
 	DECLARE_HASHTABLE(timer_list, PERIODIC_IO_HASH_BITS);
 	/* Work item */

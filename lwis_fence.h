@@ -16,6 +16,7 @@
 
 #include "lwis_device.h"
 
+#define LWIS_FENCE_DBG
 #define LWIS_CLIENTS_HASH_BITS 8
 
 struct lwis_fence {
