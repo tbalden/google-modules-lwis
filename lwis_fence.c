@@ -18,7 +18,6 @@
 #include "lwis_fence.h"
 #include "lwis_transaction.h"
 
-#define LWIS_FENCE_DBG
 #define HASH_CLIENT(x) hash_ptr(x, LWIS_CLIENTS_HASH_BITS)
 
 static int lwis_fence_release(struct inode *node, struct file *fp);
@@ -42,6 +41,13 @@ static const struct file_operations fence_file_ops = {
 static int lwis_fence_release(struct inode *node, struct file *fp)
 {
 	struct lwis_fence *lwis_fence = fp->private_data;
+	struct lwis_fence_trigger_transaction_list *tx_list;
+	struct lwis_pending_transaction_id *transaction_id;
+	/* Temporary vars for traversal */
+	struct hlist_node *n;
+	struct list_head *it_tran, *it_tran_tmp;
+	int i;
+
 #ifdef LWIS_FENCE_DBG
 	dev_info(lwis_fence->lwis_top_dev->dev, "Releasing lwis_fence fd-%d", lwis_fence->fd);
 #endif
@@ -49,6 +55,24 @@ static int lwis_fence_release(struct inode *node, struct file *fp)
 		dev_err(lwis_fence->lwis_top_dev->dev,
 			"lwis_fence fd-%d release without being signaled", lwis_fence->fd);
 	}
+
+	if (!hash_empty(lwis_fence->transaction_list)) {
+		hash_for_each_safe (lwis_fence->transaction_list, i, n, tx_list, node) {
+			if (!list_empty(&tx_list->list)) {
+				list_for_each_safe (it_tran, it_tran_tmp, &tx_list->list) {
+					transaction_id =
+						list_entry(it_tran,
+							   struct lwis_pending_transaction_id,
+							   list_node);
+					list_del(&transaction_id->list_node);
+					kfree(transaction_id);
+				}
+			}
+			hash_del(&tx_list->node);
+			kfree(tx_list);
+		}
+	}
+
 	kfree(lwis_fence);
 	return 0;
 }
@@ -131,12 +155,12 @@ static ssize_t lwis_fence_signal(struct file *fp, const char __user *user_buffer
 #endif
 
 	hash_for_each_safe (lwis_fence->transaction_list, i, n, tx_list, node) {
+		hash_del(&tx_list->node);
 		lwis_transaction_fence_trigger(tx_list->owner, lwis_fence, &tx_list->list);
 		if (!list_empty(&tx_list->list)) {
 			dev_err(lwis_fence->lwis_top_dev->dev,
 				"Fail to trigger all transactions\n");
 		}
-		hash_del(&tx_list->node);
 		kfree(tx_list);
 	}
 
@@ -246,6 +270,7 @@ int lwis_trigger_fence_add_transaction(int fence_fd, struct lwis_client *client,
 {
 	struct file *fp;
 	struct lwis_fence *lwis_fence;
+	struct lwis_pending_transaction_id *pending_transaction_id;
 	struct lwis_fence_trigger_transaction_list *tx_list;
 	int ret = 0;
 
@@ -261,27 +286,32 @@ int lwis_trigger_fence_add_transaction(int fence_fd, struct lwis_client *client,
 		return -EBADF;
 	}
 
+	pending_transaction_id = kmalloc(sizeof(struct lwis_pending_transaction_id), GFP_ATOMIC);
+	if (!pending_transaction_id) {
+		dev_err(client->lwis_dev->dev,
+			"Failed to allocate lwis_pending_transaction_id at adding transactions to fence\n");
+		return -ENOMEM;
+	}
+	pending_transaction_id->id = transaction->info.id;
+
 	mutex_lock(&lwis_fence->lock);
 	if (lwis_fence->status == LWIS_FENCE_STATUS_NOT_SIGNALED) {
 		lwis_fence->fp = fp;
 		tx_list = transaction_list_find_or_create(lwis_fence, client);
-		list_add(&transaction->event_list_node, &tx_list->list);
+		list_add(&pending_transaction_id->list_node, &tx_list->list);
 #ifdef LWIS_FENCE_DBG
 		dev_info(client->lwis_dev->dev,
 			 "lwis_fence transaction id %llu added to its trigger fence fd %d ",
 			 transaction->info.id, lwis_fence->fd);
 #endif
-	} else if (lwis_fence->status == 0) {
-		fput(fp);
-		ret = -EALREADY;
-	} else if (lwis_fence->status) {
-		fput(fp);
+	} else {
 		dev_err(client->lwis_dev->dev,
 			"Bad lwis_fence fd-%d already signaled with error code %d \n", fence_fd,
 			lwis_fence->status);
+		kfree(pending_transaction_id);
+		fput(fp);
 		ret = -EINVAL;
 	}
 	mutex_unlock(&lwis_fence->lock);
-
 	return ret;
 }

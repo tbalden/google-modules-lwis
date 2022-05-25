@@ -29,6 +29,7 @@ struct lwis_transaction {
 	struct lwis_transaction_response_header *resp;
 	struct list_head event_list_node;
 	struct list_head process_queue_node;
+	struct hlist_node pending_map_node;
 };
 
 /* For debugging purposes, keeps track of the transaction information, as
@@ -44,6 +45,11 @@ struct lwis_transaction_event_list {
 	int64_t event_id;
 	struct list_head list;
 	struct hlist_node node;
+};
+
+struct lwis_pending_transaction_id {
+	int64_t id;
+	struct list_head list_node;
 };
 
 int lwis_transaction_init(struct lwis_client *client);
