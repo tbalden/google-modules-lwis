@@ -96,6 +96,19 @@ const char *lwis_device_type_to_string(int32_t type)
 	}
 }
 
+const char *trigger_condition_node_operator_to_string(int32_t type)
+{
+	switch (type) {
+	case LWIS_TRIGGER_NODE_OPERATOR_AND:
+		return "AND";
+	case LWIS_TRIGGER_NODE_OPERATOR_OR:
+		return "OR";
+	case LWIS_TRIGGER_NODE_OPERATOR_NONE:
+	default:
+		return "NONE";
+	}
+}
+
 int lwis_create_kthread_workers(struct lwis_device *lwis_dev)
 {
 	char t_name[LWIS_MAX_NAME_STRING_LEN];

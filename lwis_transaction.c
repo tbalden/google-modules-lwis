@@ -562,6 +562,7 @@ static int check_transaction_param_locked(struct lwis_client *client,
 	struct lwis_transaction_info *info = &transaction->info;
 	struct lwis_device *lwis_dev = client->lwis_dev;
 	int32_t fd_or_err;
+	int i;
 	int ret = 0;
 
 	if (!client) {
@@ -581,11 +582,6 @@ static int check_transaction_param_locked(struct lwis_client *client,
 
 	/* If triggered by a lwis_fence */
 	if (lwis_transaction_triggered_by_fence(transaction)) {
-		/* TODO(bian@): add supports for nested trigger expression. */
-		if (transaction->info.trigger_condition.num_nodes > 1) {
-			dev_err(lwis_dev->dev, "Nested trigger expression is not supported yet\n");
-			return -EINVAL;
-		}
 		if (transaction->info.trigger_condition.num_nodes > LWIS_TRIGGER_NODES_MAX_NUM) {
 			dev_err(lwis_dev->dev,
 				"Trigger condition contains %lu node, more than the limit of %d\n",
@@ -594,22 +590,25 @@ static int check_transaction_param_locked(struct lwis_client *client,
 			return -EINVAL;
 		}
 
-		if (transaction->info.trigger_condition.trigger_nodes[0].type ==
-		    LWIS_TRIGGER_FENCE_PLACEHOLDER) {
-			fd_or_err = lwis_fence_create(lwis_dev);
-			if (fd_or_err < 0) {
-				return fd_or_err;
+		for (i = 0; i < info->trigger_condition.num_nodes; i++) {
+			if (info->trigger_condition.trigger_nodes[i].type ==
+			    LWIS_TRIGGER_FENCE_PLACEHOLDER) {
+				fd_or_err = lwis_fence_create(lwis_dev);
+				if (fd_or_err < 0) {
+					return fd_or_err;
+				}
+				info->trigger_condition.trigger_nodes[i].fence_fd = fd_or_err;
 			}
-			transaction->info.trigger_condition.trigger_nodes[0].fence_fd = fd_or_err;
-		}
 
-		ret = lwis_trigger_fence_add_transaction(
-			transaction->info.trigger_condition.trigger_nodes[0].fence_fd, client,
-			transaction);
-		if (ret) {
-			return ret;
+			if (info->trigger_condition.trigger_nodes[i].type != LWIS_TRIGGER_EVENT) {
+				ret = lwis_trigger_fence_add_transaction(
+					info->trigger_condition.trigger_nodes[i].fence_fd, client,
+					transaction);
+				if (ret) {
+					return ret;
+				}
+			}
 		}
-
 		/* Increment counter now to avoid reusing the id upon failure */
 		client->transaction_counter++;
 	}
@@ -891,6 +890,36 @@ int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
 	return 0;
 }
 
+static bool is_trigger_condition_ready(struct lwis_transaction *transaction,
+				       struct lwis_fence *fence)
+{
+	int32_t operator_type;
+	size_t all_signaled;
+
+	operator_type = transaction->info.trigger_condition.operator_type;
+	all_signaled = transaction->info.trigger_condition.num_nodes;
+
+	transaction->signaled_count++;
+	if ((operator_type == LWIS_TRIGGER_NODE_OPERATOR_AND ||
+	     operator_type == LWIS_TRIGGER_NODE_OPERATOR_OR) &&
+	    transaction->signaled_count == all_signaled) {
+		return true;
+	} else if (operator_type == LWIS_TRIGGER_NODE_OPERATOR_AND && fence->status != 0) {
+		/*
+		   This condition is ready to cancel transaction as long as there is
+		   an error condition from fence with operator type "AND".
+		   No matter whether all condition nodes are signaled.
+		*/
+		return true;
+	} else if (operator_type == LWIS_TRIGGER_NODE_OPERATOR_OR && fence->status == 0) {
+		return true;
+	} else if (operator_type == LWIS_TRIGGER_NODE_OPERATOR_NONE) {
+		return true;
+	}
+
+	return false;
+}
+
 void lwis_transaction_fence_trigger(struct lwis_client *client, struct lwis_fence *fence,
 				    struct list_head *transaction_list)
 {
@@ -920,21 +949,21 @@ void lwis_transaction_fence_trigger(struct lwis_client *client, struct lwis_fenc
 				fence->fd, transaction_id->id);
 #endif
 		} else {
-			/* TODO(bian): Skip triggering if AND trigger condition does not fully meet. */
-			hash_del(&transaction->pending_map_node);
-			if (fence->status == 0) {
-				/* TODO(bian@): Ignore the transaction context flags for now. */
-				list_add_tail(&transaction->process_queue_node,
-					      &client->transaction_process_queue);
-			} else {
-				cancel_transaction(client->lwis_dev, transaction, -ECANCELED,
-						   &pending_events);
-			}
+			if (is_trigger_condition_ready(transaction, fence)) {
+				hash_del(&transaction->pending_map_node);
+				if (fence->status == 0) {
+					list_add_tail(&transaction->process_queue_node,
+						      &client->transaction_process_queue);
 #ifdef LWIS_FENCE_DBG
-			dev_info(client->lwis_dev->dev,
-				 "lwis_fence fd-%d triggered transaction id %llu", fence->fd,
-				 transaction->info.id);
+					dev_info(client->lwis_dev->dev,
+						 "lwis_fence fd-%d triggered transaction id %llu",
+						 fence->fd, transaction->info.id);
 #endif
+				} else {
+					cancel_transaction(client->lwis_dev, transaction,
+							   -ECANCELED, &pending_events);
+				}
+			}
 		}
 
 		kfree(transaction_id);
