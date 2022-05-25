@@ -30,6 +30,7 @@ struct lwis_transaction {
 	struct list_head event_list_node;
 	struct list_head process_queue_node;
 	struct hlist_node pending_map_node;
+	int signaled_count;
 };
 
 /* For debugging purposes, keeps track of the transaction information, as
