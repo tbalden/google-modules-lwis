@@ -317,7 +317,9 @@ struct lwis_transaction_info {
 	// Input
 	int64_t trigger_event_id;
 	int64_t trigger_event_counter;
+#ifdef LWIS_FENCE_ENABLED
 	struct lwis_transaction_trigger_condition trigger_condition;
+#endif
 	size_t num_io_entries;
 	struct lwis_io_entry *io_entries;
 	bool run_in_event_context;
