@@ -43,19 +43,58 @@ struct lwis_fence_trigger_transaction_list {
  */
 int lwis_fence_create(struct lwis_device *lwis_dev);
 
+int ioctl_lwis_fence_create(struct lwis_device *lwis_dev, int32_t __user *msg);
+
 /*
  *  lwis_fence_get: Get the lwis_fence associated with the fd.
  */
 struct lwis_device *lwis_fence_get(int fd);
 
+#ifdef LWIS_FENCE_ENABLED
+bool lwis_triggered_by_condition(struct lwis_transaction *transaction);
+
+bool lwis_event_triggered_condition_ready(struct lwis_transaction *transaction,
+					  struct lwis_transaction *weak_transaction,
+					  int64_t event_id, int64_t event_counter);
+
+
+bool lwis_fence_triggered_condition_ready(struct lwis_transaction *transaction,
+					  struct lwis_fence *fence);
+
 /*
- *  lwis_trigger_fence_add_transaction: Add the transaction to the trigger-fence's transactions list.
- *  Returns: 0 if fence is not signaled and transaction is added to the list
- *           -EBADFD if no lwis_fence is found with the fd
- *           -EALREADY if fence is already signaled OK and transaction should be turned into an immediate transaction
- *           -EINVAL if fence is signaled with error
+ *  lwis_parse_trigger_condition: Add the transaction to the associated trigger
+ *  fence and event lists.
  */
-int lwis_trigger_fence_add_transaction(int fence_fd, struct lwis_client *client,
-				       struct lwis_transaction *transaction);
+int lwis_parse_trigger_condition(struct lwis_client *client,
+				 struct lwis_transaction *transaction);
+#else
+static inline
+bool lwis_triggered_by_condition(struct lwis_transaction *transaction)
+{
+	return false;
+}
+
+static inline
+bool lwis_event_triggered_condition_ready(struct lwis_transaction *transaction,
+					  struct lwis_transaction *weak_transaction,
+					  int64_t event_id, int64_t event_counter)
+{
+	return false;
+}
+
+static inline
+bool lwis_fence_triggered_condition_ready(struct lwis_transaction *transaction,
+					  struct lwis_fence *fence)
+{
+	return false;
+}
+
+static inline
+int lwis_parse_trigger_condition(struct lwis_client *client, struct
+				 lwis_transaction *transaction)
+{
+	return 0;
+}
+#endif
 
 #endif /* LWIS_IOCTL_H_ */

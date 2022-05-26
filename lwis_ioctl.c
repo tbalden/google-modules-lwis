@@ -1392,23 +1392,6 @@ static int ioctl_dpm_get_clock(struct lwis_device *lwis_dev, struct lwis_qos_set
 	return 0;
 }
 
-static int ioctl_lwis_fence_create(struct lwis_device *lwis_dev, int32_t __user *msg)
-{
-	int32_t fd_or_err;
-
-	fd_or_err = lwis_fence_create(lwis_dev);
-	if (fd_or_err < 0) {
-		return fd_or_err;
-	}
-
-	if (copy_to_user((void __user *)msg, &fd_or_err, sizeof(int32_t))) {
-		dev_err(lwis_dev->dev, "failed to copy to user\n");
-		return -EFAULT;
-	}
-
-	return 0;
-}
-
 int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type, unsigned long param)
 {
 	int ret = 0;
@@ -1509,9 +1492,11 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type, unsig
 	case LWIS_DPM_GET_CLOCK:
 		ret = ioctl_dpm_get_clock(lwis_dev, (struct lwis_qos_setting *)param);
 		break;
+#ifdef LWIS_FENCE_ENABLED
 	case LWIS_FENCE_CREATE:
 		ret = ioctl_lwis_fence_create(lwis_dev, (int32_t *)param);
 		break;
+#endif
 	default:
 		dev_err_ratelimited(lwis_dev->dev, "Unknown IOCTL operation\n");
 		ret = -EINVAL;

@@ -81,4 +81,8 @@ int lwis_transaction_submit_locked(struct lwis_client *client,
 int lwis_transaction_replace_locked(struct lwis_client *client,
 				    struct lwis_transaction *transaction);
 
+int lwis_trigger_event_add_weak_transaction(struct lwis_client *client,
+					    int64_t transaction_id,
+					    int64_t event_id);
+
 #endif /* LWIS_TRANSACTION_H_ */

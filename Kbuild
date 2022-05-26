@@ -5,7 +5,6 @@ lwis-objs += lwis_device_ioreg.o
 lwis-objs += lwis_device_slc.o
 lwis-objs += lwis_device_top.o
 lwis-objs += lwis_clock.o
-lwis-objs += lwis_fence.o
 lwis-objs += lwis_gpio.o
 lwis-objs += lwis_i2c.o
 lwis-objs += lwis_interrupt.o
@@ -39,6 +38,11 @@ endif
 ifeq ($(CONFIG_SOC_ZUMA), y)
 lwis-objs += platform/casablanca/lwis_platform_casablanca.o
 lwis-objs += platform/casablanca/lwis_platform_casablanca_dma.o
+ccflags-y += -DLWIS_FENCE_ENABLED
+endif
+
+ifneq ($(filter -DLWIS_FENCE_ENABLED, $(ccflags-y)),)
+lwis-objs += lwis_fence.o
 endif
 
 # Device tree specific file
@@ -48,4 +52,4 @@ endif
 
 obj-$(CONFIG_LWIS) += lwis.o
 
-ccflags-y = -I$(abspath $(KERNEL_SRC)/$(M)) -I$(abspath $(KBUILD_SRC)/drivers/soc/google)
+ccflags-y += -I$(abspath $(KERNEL_SRC)/$(M)) -I$(abspath $(KBUILD_SRC)/drivers/soc/google)
