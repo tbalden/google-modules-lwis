@@ -31,6 +31,12 @@ struct lwis_transaction {
 	struct list_head process_queue_node;
 	struct hlist_node pending_map_node;
 	int signaled_count;
+
+	/* temporary variables to add supports for mixing events and fences in
+	 * trigger_condition. Will be removed and refacter into an union soon.
+	 */
+	bool is_weak_transaction;
+	int64_t id;
 };
 
 /* For debugging purposes, keeps track of the transaction information, as
