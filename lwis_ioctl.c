@@ -878,12 +878,14 @@ static int ioctl_event_dequeue(struct lwis_client *lwis_client, struct lwis_even
 		return -EFAULT;
 	}
 
+	mutex_lock(&lwis_dev->client_lock);
 	/* Peek at the front element of error event queue first */
 	ret = lwis_client_error_event_peek_front(lwis_client, &event);
 	if (ret == 0) {
 		is_error_event = true;
 	} else if (ret != -ENOENT) {
 		dev_err(lwis_dev->dev, "Error dequeueing error event: %ld\n", ret);
+		mutex_unlock(&lwis_dev->client_lock);
 		return ret;
 	} else {
 		/* Nothing at error event queue, continue to check normal
@@ -893,6 +895,7 @@ static int ioctl_event_dequeue(struct lwis_client *lwis_client, struct lwis_even
 			if (ret != -ENOENT) {
 				dev_err(lwis_dev->dev, "Error dequeueing event: %ld\n", ret);
 			}
+			mutex_unlock(&lwis_dev->client_lock);
 			return ret;
 		}
 	}
@@ -924,6 +927,7 @@ static int ioctl_event_dequeue(struct lwis_client *lwis_client, struct lwis_even
 					 event->event_info.payload_size)) {
 				dev_err(lwis_dev->dev, "Failed to copy %zu bytes to user\n",
 					event->event_info.payload_size);
+				mutex_unlock(&lwis_dev->client_lock);
 				return -EFAULT;
 			}
 		}
@@ -941,9 +945,11 @@ static int ioctl_event_dequeue(struct lwis_client *lwis_client, struct lwis_even
 		}
 		if (ret) {
 			dev_err(lwis_dev->dev, "Error dequeueing event: %ld\n", ret);
+			mutex_unlock(&lwis_dev->client_lock);
 			return ret;
 		}
 	}
+	mutex_unlock(&lwis_dev->client_lock);
 	/* Now let's copy the actual info struct back to user */
 	if (copy_to_user((void __user *)msg, (void *)&info_user, sizeof(info_user))) {
 		dev_err(lwis_dev->dev, "Failed to copy %zu bytes to user\n", sizeof(info_user));
