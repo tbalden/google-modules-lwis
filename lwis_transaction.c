@@ -1037,6 +1037,7 @@ static int cancel_waiting_transaction_locked(struct lwis_client *client, int64_t
 	struct lwis_transaction_event_list *it_evt_list;
 	struct lwis_transaction *transaction;
 
+	/* Search transactions triggered by events */
 	hash_for_each_safe (client->transaction_list, i, tmp, it_evt_list, node) {
 		list_for_each_safe (it_tran, it_tran_tmp, &it_evt_list->list) {
 			transaction = list_entry(it_tran, struct lwis_transaction, event_list_node);
@@ -1046,6 +1047,16 @@ static int cancel_waiting_transaction_locked(struct lwis_client *client, int64_t
 			}
 		}
 	}
+
+	/* Search transactions triggered by trigger_condition */
+	hash_for_each_possible_safe (client->pending_transactions, transaction, tmp,
+				     pending_map_node, id) {
+		if (transaction->info.id == id) {
+			transaction->resp->error_code = -ECANCELED;
+			return 0;
+		}
+	}
+
 	return -ENOENT;
 }
 
