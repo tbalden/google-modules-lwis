@@ -316,7 +316,6 @@ static int lwis_trigger_fence_add_transaction(int fence_fd, struct lwis_client *
 	return ret;
 }
 
-
 bool lwis_triggered_by_condition(struct lwis_transaction *transaction)
 {
 	return (transaction->info.trigger_condition.num_nodes > 0);
@@ -337,7 +336,9 @@ bool lwis_event_triggered_condition_ready(struct lwis_transaction *transaction,
 	for (i = 0; i < info->trigger_condition.num_nodes; i++) {
 		if (info->trigger_condition.trigger_nodes[i].type == LWIS_TRIGGER_EVENT &&
 		    info->trigger_condition.trigger_nodes[i].event.id == event_id &&
-		    info->trigger_condition.trigger_nodes[i].event.counter == event_counter) {
+		    (info->trigger_condition.trigger_nodes[i].event.counter == event_counter ||
+		     info->trigger_condition.trigger_nodes[i].event.counter ==
+			     LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE)) {
 			transaction->signaled_count++;
 			list_del(&weak_transaction->event_list_node);
 			kfree(weak_transaction);
@@ -392,8 +393,7 @@ bool lwis_fence_triggered_condition_ready(struct lwis_transaction *transaction,
 	return false;
 }
 
-int lwis_parse_trigger_condition(struct lwis_client *client,
-				 struct lwis_transaction *transaction)
+int lwis_parse_trigger_condition(struct lwis_client *client, struct lwis_transaction *transaction)
 {
 	struct lwis_transaction_info *info;
 	struct lwis_device *lwis_dev;
@@ -411,14 +411,13 @@ int lwis_parse_trigger_condition(struct lwis_client *client,
 	if (info->trigger_condition.num_nodes > LWIS_TRIGGER_NODES_MAX_NUM) {
 		dev_err(lwis_dev->dev,
 			"Trigger condition contains %lu node, more than the limit of %d\n",
-			info->trigger_condition.num_nodes,
-			LWIS_TRIGGER_NODES_MAX_NUM);
+			info->trigger_condition.num_nodes, LWIS_TRIGGER_NODES_MAX_NUM);
 		return -EINVAL;
 	}
 
 	for (i = 0; i < info->trigger_condition.num_nodes; i++) {
 		if (info->trigger_condition.trigger_nodes[i].type ==
-				LWIS_TRIGGER_FENCE_PLACEHOLDER) {
+		    LWIS_TRIGGER_FENCE_PLACEHOLDER) {
 			fd_or_err = lwis_fence_create(lwis_dev);
 			if (fd_or_err < 0) {
 				return fd_or_err;
