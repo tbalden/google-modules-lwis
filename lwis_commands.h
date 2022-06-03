@@ -319,6 +319,7 @@ struct lwis_transaction_info {
 	int64_t trigger_event_counter;
 #ifdef LWIS_FENCE_ENABLED
 	struct lwis_transaction_trigger_condition trigger_condition;
+	bool create_completion_fence;
 #endif
 	size_t num_io_entries;
 	struct lwis_io_entry *io_entries;
@@ -333,6 +334,9 @@ struct lwis_transaction_info {
 	// Otherwise, the value is -1.
 	int64_t current_trigger_event_counter;
 	int64_t submission_timestamp_ns;
+#ifdef LWIS_FENCE_ENABLED
+	int32_t completion_fence_fd;
+#endif
 };
 
 // Actual size of this struct depends on num_entries
