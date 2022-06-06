@@ -137,7 +137,7 @@ int lwis_set_kthread_priority(struct lwis_device *lwis_dev, struct task_struct *
 	}
 	if (priority < MAX_RT_PRIO) {
 		policy = SCHED_FIFO;
-		param.sched_priority = priority;
+		param.sched_priority = MAX_RT_PRIO - priority;
 	} else {
 		policy = SCHED_NORMAL;
 		param.sched_priority = 0;
