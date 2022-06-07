@@ -140,7 +140,6 @@ static void subscribe_tasklet_func(unsigned long data)
 		event_subscriber_list = event_subscriber_list_find((struct lwis_device *)data,
 								   trigger_event->trigger_event_id);
 		if (!event_subscriber_list || list_empty(&event_subscriber_list->list)) {
-			spin_unlock_irqrestore(&lwis_top_dev->base_dev.lock, flags);
 			dev_err(lwis_top_dev->base_dev.dev,
 				"Failed to find event subscriber list for %llx\n",
 				trigger_event->trigger_event_id);
