@@ -507,16 +507,19 @@ int lwis_initialize_completion_fences(struct lwis_client *client,
 	int fd_or_err;
 	struct lwis_transaction_info *info = &transaction->info;
 
-	if (info->create_completion_fence) {
+	if (info->completion_fence_fd == LWIS_CREATE_COMPLETION_FENCE) {
 		fd_or_err = lwis_fence_create(client->lwis_dev);
 		if (fd_or_err < 0) {
 			return fd_or_err;
 		}
-		ret = lwis_add_completion_fence(client, transaction, fd_or_err);
+		info->completion_fence_fd = fd_or_err;
+	}
+
+	if (info->completion_fence_fd >= 0) {
+		ret = lwis_add_completion_fence(client, transaction, info->completion_fence_fd);
 		if (ret) {
 			return ret;
 		}
-		info->completion_fence_fd = fd_or_err;
 	}
 
 	return 0;

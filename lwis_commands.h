@@ -303,6 +303,10 @@ struct lwis_transaction_trigger_condition {
 	struct lwis_transaction_trigger_node trigger_nodes[LWIS_TRIGGER_NODES_MAX_NUM];
 };
 
+// Status code for completion fences
+#define LWIS_NO_COMPLETION_FENCE -1
+#define LWIS_CREATE_COMPLETION_FENCE -2
+
 // Invalid ID for Transaction id and Periodic IO id
 #define LWIS_ID_INVALID (-1LL)
 #define LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE (-1LL)
@@ -313,7 +317,7 @@ struct lwis_transaction_info {
 	int64_t trigger_event_counter;
 #ifdef LWIS_FENCE_ENABLED
 	struct lwis_transaction_trigger_condition trigger_condition;
-	bool create_completion_fence;
+	int32_t completion_fence_fd;
 #endif
 	size_t num_io_entries;
 	struct lwis_io_entry *io_entries;
@@ -328,9 +332,6 @@ struct lwis_transaction_info {
 	// Otherwise, the value is -1.
 	int64_t current_trigger_event_counter;
 	int64_t submission_timestamp_ns;
-#ifdef LWIS_FENCE_ENABLED
-	int32_t completion_fence_fd;
-#endif
 };
 
 // Actual size of this struct depends on num_entries
