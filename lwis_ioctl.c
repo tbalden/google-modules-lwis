@@ -1088,6 +1088,7 @@ static int construct_transaction(struct lwis_client *client,
 	k_transaction->is_weak_transaction = false;
 	INIT_LIST_HEAD(&k_transaction->event_list_node);
 	INIT_LIST_HEAD(&k_transaction->process_queue_node);
+	INIT_LIST_HEAD(&k_transaction->completion_fence_list);
 
 	*transaction = k_transaction;
 	return 0;
