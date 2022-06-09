@@ -23,15 +23,15 @@
 static int lwis_fence_release(struct inode *node, struct file *fp);
 static ssize_t lwis_fence_get_status(struct file *fp, char __user *user_buffer, size_t len,
 				     loff_t *offset);
-static ssize_t lwis_fence_write_status(struct file *fp, const char __user *user_buffer, size_t len,
-				       loff_t *offset);
+static ssize_t lwis_fence_signal(struct file *fp, const char __user *user_buffer, size_t len,
+				 loff_t *offset);
 static unsigned int lwis_fence_poll(struct file *fp, poll_table *wait);
 
 static const struct file_operations fence_file_ops = {
 	.owner = THIS_MODULE,
 	.release = lwis_fence_release,
 	.read = lwis_fence_get_status,
-	.write = lwis_fence_write_status,
+	.write = lwis_fence_signal,
 	.poll = lwis_fence_poll,
 };
 
@@ -83,7 +83,6 @@ static int lwis_fence_release(struct inode *node, struct file *fp)
 static ssize_t lwis_fence_get_status(struct file *fp, char __user *user_buffer, size_t len,
 				     loff_t *offset)
 {
-	unsigned long flags;
 	int status = 0;
 	struct lwis_fence *lwis_fence = fp->private_data;
 	int max_len, read_len;
@@ -98,11 +97,12 @@ static ssize_t lwis_fence_get_status(struct file *fp, char __user *user_buffer, 
 		len = max_len;
 	}
 
-	spin_lock_irqsave(&lwis_fence->lock, flags);
+	mutex_lock(&lwis_fence->lock);
 	status = lwis_fence->status;
-	spin_unlock_irqrestore(&lwis_fence->lock, flags);
+	mutex_unlock(&lwis_fence->lock);
 
 	read_len = len - copy_to_user((void __user *)user_buffer, (void *)&status + *offset, len);
+	*offset += read_len;
 #ifdef LWIS_FENCE_DBG
 	dev_info(lwis_fence->lwis_top_dev->dev, "lwis_fence fd-%d reading status = %d",
 		 lwis_fence->fd, lwis_fence->status);
@@ -111,14 +111,17 @@ static ssize_t lwis_fence_get_status(struct file *fp, char __user *user_buffer, 
 }
 
 /*
- *  lwis_fence_write_status: Signal fence with the error code from user
+ *  lwis_fence_signal: Signal fence with the error code from user
  */
-static ssize_t lwis_fence_write_status(struct file *fp, const char __user *user_buffer, size_t len,
-				       loff_t *offset)
+static ssize_t lwis_fence_signal(struct file *fp, const char __user *user_buffer, size_t len,
+				 loff_t *offset)
 {
-	int ret = 0;
 	int status = 0;
 	struct lwis_fence *lwis_fence = fp->private_data;
+	struct lwis_fence_trigger_transaction_list *tx_list;
+	/* Temporary vars for hash table traversal */
+	struct hlist_node *n;
+	int i;
 
 	if (!lwis_fence) {
 		dev_err(lwis_fence->lwis_top_dev->dev, "Cannot find lwis_fence instance\n");
@@ -133,34 +136,17 @@ static ssize_t lwis_fence_write_status(struct file *fp, const char __user *user_
 
 	/* Set lwis_fence's status if not signaled */
 	len = len - copy_from_user(&status, (void __user *)user_buffer, len);
-	ret = lwis_fence_signal(lwis_fence, status);
-	if (ret) {
-		return ret;
-	}
-
-	return len;
-}
-
-int lwis_fence_signal(struct lwis_fence *lwis_fence, int status)
-{
-	unsigned long flags;
-	struct lwis_fence_trigger_transaction_list *tx_list;
-	/* Temporary vars for hash table traversal */
-	struct hlist_node *n;
-	int i;
-
-	spin_lock_irqsave(&lwis_fence->lock, flags);
-
+	mutex_lock(&lwis_fence->lock);
 	if (lwis_fence->status != LWIS_FENCE_STATUS_NOT_SIGNALED) {
 		/* Return error if fence is already signaled */
 		dev_err(lwis_fence->lwis_top_dev->dev,
 			"Cannot signal a lwis_fence fd-%d already signaled, status is %d\n",
 			lwis_fence->fd, lwis_fence->status);
-		spin_unlock_irqrestore(&lwis_fence->lock, flags);
+		mutex_unlock(&lwis_fence->lock);
 		return -EINVAL;
 	}
 	lwis_fence->status = status;
-	spin_unlock_irqrestore(&lwis_fence->lock, flags);
+	mutex_unlock(&lwis_fence->lock);
 
 	wake_up_interruptible(&lwis_fence->status_wait_queue);
 #ifdef LWIS_FENCE_DBG
@@ -178,7 +164,7 @@ int lwis_fence_signal(struct lwis_fence *lwis_fence, int status)
 		kfree(tx_list);
 	}
 
-	return 0;
+	return len;
 }
 
 /*
@@ -186,7 +172,6 @@ int lwis_fence_signal(struct lwis_fence *lwis_fence, int status)
  */
 static unsigned int lwis_fence_poll(struct file *fp, poll_table *wait)
 {
-	unsigned long flags;
 	int status = 0;
 	struct lwis_fence *lwis_fence = fp->private_data;
 	if (!lwis_fence) {
@@ -196,9 +181,9 @@ static unsigned int lwis_fence_poll(struct file *fp, poll_table *wait)
 
 	poll_wait(fp, &lwis_fence->status_wait_queue, wait);
 
-	spin_lock_irqsave(&lwis_fence->lock, flags);
+	mutex_lock(&lwis_fence->lock);
 	status = lwis_fence->status;
-	spin_unlock_irqrestore(&lwis_fence->lock, flags);
+	mutex_unlock(&lwis_fence->lock);
 
 	/* Check if the fence is already signaled */
 	if (status != LWIS_FENCE_STATUS_NOT_SIGNALED) {
@@ -283,7 +268,6 @@ transaction_list_find_or_create(struct lwis_fence *fence, struct lwis_client *ow
 static int lwis_trigger_fence_add_transaction(int fence_fd, struct lwis_client *client,
 					      struct lwis_transaction *transaction)
 {
-	unsigned long flags;
 	struct file *fp;
 	struct lwis_fence *lwis_fence;
 	struct lwis_pending_transaction_id *pending_transaction_id;
@@ -310,7 +294,7 @@ static int lwis_trigger_fence_add_transaction(int fence_fd, struct lwis_client *
 	}
 	pending_transaction_id->id = transaction->info.id;
 
-	spin_lock_irqsave(&lwis_fence->lock, flags);
+	mutex_lock(&lwis_fence->lock);
 	if (lwis_fence->status == LWIS_FENCE_STATUS_NOT_SIGNALED) {
 		lwis_fence->fp = fp;
 		tx_list = transaction_list_find_or_create(lwis_fence, client);
@@ -328,8 +312,7 @@ static int lwis_trigger_fence_add_transaction(int fence_fd, struct lwis_client *
 		fput(fp);
 		ret = -EINVAL;
 	}
-	spin_unlock_irqrestore(&lwis_fence->lock, flags);
-
+	mutex_unlock(&lwis_fence->lock);
 	return ret;
 }
 
@@ -474,75 +457,4 @@ int ioctl_lwis_fence_create(struct lwis_device *lwis_dev, int32_t __user *msg)
 	}
 
 	return 0;
-}
-
-int lwis_add_tail_fence(struct lwis_client *client, struct lwis_transaction *transaction,
-			int fence_fd)
-{
-	struct file *fp;
-	struct lwis_fence *lwis_fence;
-	struct lwis_fence_pending_signal *fence_pending_signal;
-	struct lwis_device *lwis_dev = client->lwis_dev;
-
-	fp = fget(fence_fd);
-	if (fp == NULL) {
-		dev_err(lwis_dev->dev, "Failed to find lwis_fence with fd %d\n", fence_fd);
-		return -EBADF;
-	}
-	lwis_fence = fp->private_data;
-	lwis_fence->fp = fp;
-	fence_pending_signal = lwis_fence_pending_signal_create(lwis_fence);
-	if (fence_pending_signal == NULL) {
-		return -ENOMEM;
-	}
-	list_add(&fence_pending_signal->node, &transaction->tail_fence_list);
-
-	return 0;
-}
-
-struct lwis_fence_pending_signal *lwis_fence_pending_signal_create(struct lwis_fence *fence)
-{
-	struct lwis_fence_pending_signal *pending_fence_signal =
-		kmalloc(sizeof(struct lwis_fence_pending_signal), GFP_ATOMIC);
-	if (!pending_fence_signal) {
-		dev_err(fence->lwis_top_dev->dev,
-			"Cannot allocate new fence pending signal list\n");
-		return NULL;
-	}
-	pending_fence_signal->fence = fence;
-	pending_fence_signal->pending_status = LWIS_FENCE_STATUS_NOT_SIGNALED;
-	return pending_fence_signal;
-}
-
-void lwis_fences_pending_signal_emit(struct lwis_device *lwis_device,
-				     struct list_head *pending_fences)
-{
-	int ret;
-	struct lwis_fence_pending_signal *pending_fence;
-	struct list_head *it_fence, *it_fence_tmp;
-
-	list_for_each_safe (it_fence, it_fence_tmp, pending_fences) {
-		pending_fence = list_entry(it_fence, struct lwis_fence_pending_signal, node);
-		ret = lwis_fence_signal(pending_fence->fence, pending_fence->pending_status);
-		if (ret) {
-			dev_err(lwis_device->dev, "Failed signaling fence with fd %d",
-				pending_fence->fence->fd);
-		}
-		list_del(&pending_fence->node);
-		fput(pending_fence->fence->fp);
-		kfree(pending_fence);
-	}
-}
-
-void lwis_pending_fences_move_all(struct lwis_device *lwis_device,
-				  struct lwis_transaction *transaction,
-				  struct list_head *pending_fences, int error_code)
-{
-	struct lwis_fence_pending_signal *pending_fence, *temp;
-
-	/* For each fence in transaction's signal list, move to pending_fences for signaling */
-	list_for_each_entry_safe (pending_fence, temp, &transaction->tail_fence_list, node) {
-		pending_fence->pending_status = error_code;
-		list_move_tail(&pending_fence->node, pending_fences);
-	}
 }
