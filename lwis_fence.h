@@ -23,7 +23,7 @@ struct lwis_fence {
 	int fd;
 	struct file *fp;
 	int status;
-	spinlock_t lock;
+	struct mutex lock;
 	/* Top device for printing logs */
 	struct lwis_device *lwis_top_dev;
 	/* Status wait queue for waking up userspace */
@@ -36,12 +36,6 @@ struct lwis_fence_trigger_transaction_list {
 	struct lwis_client *owner;
 	struct list_head list;
 	struct hlist_node node;
-};
-
-struct lwis_fence_pending_signal {
-	struct lwis_fence *fence;
-	int pending_status;
-	struct list_head node;
 };
 
 /*
@@ -73,33 +67,6 @@ bool lwis_fence_triggered_condition_ready(struct lwis_transaction *transaction,
  */
 int lwis_parse_trigger_condition(struct lwis_client *client,
 				 struct lwis_transaction *transaction);
-
-/*
- *  lwis_fence_signal: Signals the lwis_fence with the provided error code.
- */
-int lwis_fence_signal(struct lwis_fence *lwis_fence, int status);
-
-/*
- *  lwis_add_tail_fence: Adds the fence with the given fd as a tail fence to this transaction.
- */
-int lwis_add_tail_fence(struct lwis_client *client, struct lwis_transaction *transaction,
-			int fence_fd);
-
-/* lwis_fence_pending_signal_create: Creates and returns a lwis_fence_pending_signal list entry */
-struct lwis_fence_pending_signal *lwis_fence_pending_signal_create(struct lwis_fence *fence);
-
-/*
- *  lwis_fences_pending_signal_emit: Signal all lwis_fence_pending_signals in the pending_fences list
- */
-void lwis_fences_pending_signal_emit(struct lwis_device *lwis_device,
-				     struct list_head *pending_fences);
-
-/*
- *  lwis_pending_fences_move_all: Move all lwis_fence_pending_signal from the transaction to pending_fences.
- */
-void lwis_pending_fences_move_all(struct lwis_device *lwis_device,
-				  struct lwis_transaction *transaction,
-				  struct list_head *pending_fences, int error_code);
 #else
 static inline
 bool lwis_triggered_by_condition(struct lwis_transaction *transaction)
@@ -127,36 +94,6 @@ int lwis_parse_trigger_condition(struct lwis_client *client, struct
 				 lwis_transaction *transaction)
 {
 	return 0;
-}
-
-static inline int lwis_fence_signal(struct lwis_fence *lwis_fence, int status)
-{
-	return 0;
-}
-
-static inline int lwis_add_tail_fence(struct lwis_client *client,
-				      struct lwis_transaction *transaction, int fence_fd)
-{
-	return 0;
-}
-
-static inline struct lwis_fence_pending_signal *
-lwis_fence_pending_signal_create(struct lwis_fence *fence)
-{
-	return NULL;
-}
-
-static inline void lwis_fences_pending_signal_emit(struct lwis_device *lwis_device,
-						   struct list_head *pending_fences)
-{
-	return;
-}
-
-static inline void lwis_pending_fences_move_all(struct lwis_device *lwis_device,
-						struct lwis_transaction *transaction,
-						struct list_head *pending_fences, int error_code)
-{
-	return;
 }
 #endif
 
