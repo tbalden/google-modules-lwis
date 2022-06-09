@@ -653,6 +653,7 @@ static int check_transaction_param_locked(struct lwis_client *client,
 		if (ret) {
 			return ret;
 		}
+		info->completion_fence_fd = fd_or_err;
 	}
 
 	/* Look for the trigger event state, if specified */
