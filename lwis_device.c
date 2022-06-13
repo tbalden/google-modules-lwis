@@ -1226,13 +1226,6 @@ int lwis_base_probe(struct lwis_device *lwis_dev, struct platform_device *plat_d
 		goto error_init;
 	}
 
-	/* Initialize device i2c lock */
-	if (lwis_dev->type == DEVICE_TYPE_I2C) {
-		struct lwis_i2c_device *i2c_dev;
-		i2c_dev = container_of(lwis_dev, struct lwis_i2c_device, base_dev);
-		i2c_dev->group_i2c_lock = &core.group_i2c_lock[i2c_dev->i2c_lock_group_id];
-	}
-
 	/* Upon success initialization, create device for this instance */
 	lwis_dev->dev = device_create(core.dev_class, NULL, MKDEV(core.device_major, lwis_dev->id),
 				      lwis_dev, LWIS_DEVICE_NAME "-%s", lwis_dev->name);
@@ -1446,16 +1439,12 @@ static void lwis_unregister_base_device(void)
 static int __init lwis_base_device_init(void)
 {
 	int ret = 0;
-	int i;
 
 	pr_info("LWIS device initialization\n");
 
 	/* Initialize the core struct */
 	memset(&core, 0, sizeof(struct lwis_core));
 	mutex_init(&core.lock);
-	for (i = 0; i < MAX_I2C_LOCK_NUM; ++i) {
-		mutex_init(&core.group_i2c_lock[i]);
-	}
 
 	ret = lwis_register_base_device();
 	if (ret) {

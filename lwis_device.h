@@ -44,7 +44,6 @@
 #define TRANSACTION_HASH_BITS 8
 #define PERIODIC_IO_HASH_BITS 8
 #define BTS_UNSUPPORTED -1
-#define MAX_I2C_LOCK_NUM 8
 
 /* Forward declaration for lwis_device. This is needed for the declaration for
    lwis_device_subclass_operations data struct. */
@@ -68,7 +67,6 @@ struct lwis_core {
 	struct idr *idr;
 	struct cdev *chr_dev;
 	struct mutex lock;
-	struct mutex group_i2c_lock[MAX_I2C_LOCK_NUM];
 	dev_t lwis_devt;
 	int device_major;
 	struct list_head lwis_dev_list;
