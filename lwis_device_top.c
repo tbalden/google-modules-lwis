@@ -494,8 +494,7 @@ static int lwis_top_device_probe(struct platform_device *plat_dev)
 	lwis_top_event_subscribe_init(top_dev);
 
 	/* Create associated kworker threads */
-	ret = lwis_create_kthread_workers(&top_dev->base_dev, "lwis_top_trans_kthread",
-					 "lwis_top_prd_io_kthread");
+	ret = lwis_create_kthread_workers(&top_dev->base_dev);
 	if (ret) {
 		dev_err(top_dev->base_dev.dev, "Failed to create lwis_top_kthread");
 		lwis_base_unprobe(&top_dev->base_dev);
