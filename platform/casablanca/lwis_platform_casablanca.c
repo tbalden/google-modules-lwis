@@ -136,17 +136,6 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 		}
 	}
 
-	/*
-	 * PM_QOS_CPU_ONLINE_MIN is not defined in 5.4 branch, will need to
-	 * revisit and see if a replacement is needed.
-	 */
-#if 0
-	/* Set hardcoded DVFS levels */
-	if (!exynos_pm_qos_request_active(&platform->pm_qos_hpg)) {
-		exynos_pm_qos_add_request(&platform->pm_qos_hpg,
-					  PM_QOS_CPU_ONLINE_MIN, hpg_qos);
-	}
-#endif
 	if (lwis_dev->clock_family != CLOCK_FAMILY_INVALID &&
 	    lwis_dev->clock_family < NUM_CLOCK_FAMILY) {
 		ret = lwis_platform_update_qos(lwis_dev, core_clock_qos, lwis_dev->clock_family);
@@ -209,8 +198,7 @@ int lwis_platform_device_disable(struct lwis_device *lwis_dev)
 	return pm_runtime_put_sync(&lwis_dev->plat_dev->dev);
 }
 
-int lwis_platform_update_qos(struct lwis_device *lwis_dev, int value,
-			     int32_t clock_family)
+int lwis_platform_update_qos(struct lwis_device *lwis_dev, int value, int32_t clock_family)
 {
 	struct lwis_platform *platform;
 	struct exynos_pm_qos_request __maybe_unused *qos_req;
@@ -277,28 +265,25 @@ int lwis_platform_remove_qos(struct lwis_device *lwis_dev)
 		return -ENODEV;
 	}
 
-	/* Should uncomment this block once pm_qos is supported.
-	 * if (exynos_pm_qos_request_active(&platform->pm_qos_int))
-	 *	exynos_pm_qos_remove_request(&platform->pm_qos_int);
-	 * if (exynos_pm_qos_request_active(&platform->pm_qos_mem))
-	 *	exynos_pm_qos_remove_request(&platform->pm_qos_mem);
-	 */
+	/* Should uncomment this block once pm_qos is supported. */
+#if 0
+	if (exynos_pm_qos_request_active(&platform->pm_qos_int)) {
+		exynos_pm_qos_remove_request(&platform->pm_qos_int);
+	}
+	if (exynos_pm_qos_request_active(&platform->pm_qos_mem)) {
+		exynos_pm_qos_remove_request(&platform->pm_qos_mem);
+	}
 
-	/*
-	 * pm_qos_hpg is not being used, see comments above regarding
-	 * PM_QOS_CPU_ONLINE_MIN
-	 * if (exynos_pm_qos_request_active(&platform->pm_qos_hpg))
-	 *	exynos_pm_qos_remove_request(&platform->pm_qos_hpg);
-	 */
-
-	/* Should uncomment this block once pm_qos is supported.
-	 * if (exynos_pm_qos_request_active(&platform->pm_qos_int_cam))
-	 *	exynos_pm_qos_remove_request(&platform->pm_qos_int_cam);
-	 * if (exynos_pm_qos_request_active(&platform->pm_qos_cam))
-	 *	exynos_pm_qos_remove_request(&platform->pm_qos_cam);
-	 * if (exynos_pm_qos_request_active(&platform->pm_qos_tnr))
-	 *	exynos_pm_qos_remove_request(&platform->pm_qos_tnr);
-	 */
+	if (exynos_pm_qos_request_active(&platform->pm_qos_int_cam)) {
+		exynos_pm_qos_remove_request(&platform->pm_qos_int_cam);
+	}
+	if (exynos_pm_qos_request_active(&platform->pm_qos_cam)) {
+		exynos_pm_qos_remove_request(&platform->pm_qos_cam);
+	}
+	if (exynos_pm_qos_request_active(&platform->pm_qos_tnr)) {
+		exynos_pm_qos_remove_request(&platform->pm_qos_tnr);
+	}
+#endif
 	return 0;
 }
 
