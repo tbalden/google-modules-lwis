@@ -26,12 +26,14 @@ int lwis_platform_probe(struct lwis_device *lwis_dev)
 {
 	struct lwis_platform *platform;
 
-	if (!lwis_dev)
+	if (!lwis_dev) {
 		return -ENODEV;
+	}
 
-	platform = kzalloc(sizeof(*platform), GFP_KERNEL);
-	if (IS_ERR_OR_NULL(platform))
+	platform = kzalloc(sizeof(struct lwis_platform), GFP_KERNEL);
+	if (IS_ERR_OR_NULL(platform)) {
 		return -ENOMEM;
+	}
 	lwis_dev->platform = platform;
 
 	/* Enable runtime power management for the platform device */
@@ -39,8 +41,9 @@ int lwis_platform_probe(struct lwis_device *lwis_dev)
 
 	lwis_dev->bts_index = BTS_UNSUPPORTED;
 	/* Only IOREG devices will access DMA resources */
-	if (lwis_dev->type != DEVICE_TYPE_IOREG)
+	if (lwis_dev->type != DEVICE_TYPE_IOREG) {
 		return 0;
+	}
 
 	/* Will uncomment when BTS is brought up for casablanca */
 #if 0
@@ -57,13 +60,25 @@ int lwis_platform_probe(struct lwis_device *lwis_dev)
 
 static int lwis_iommu_fault_handler(struct iommu_fault *fault, void *param)
 {
+	int ret;
+	struct of_phandle_iterator it;
 	struct lwis_device *lwis_dev = (struct lwis_device *)param;
 	struct lwis_mem_page_fault_event_payload event_payload;
 
 	pr_err("############ LWIS IOMMU PAGE FAULT ############\n");
 	pr_err("\n");
-	pr_err("Device: %s IOMMU Page Fault at Address: %p Flag: 0x%08x\n", lwis_dev->name,
-	       (void *)fault->event.addr, fault->event.flags);
+	of_for_each_phandle (&it, ret, lwis_dev->plat_dev->dev.of_node, "iommus", 0, 0) {
+		u64 iommus_reg;
+		const char *port_name = NULL;
+		struct device_node *iommus_info = of_node_get(it.node);
+		of_property_read_u64(iommus_info, "reg", &iommus_reg);
+		of_property_read_string(iommus_info, "port-name", &port_name);
+		pr_info("Device [%s] registered IOMMUS :[%s] %#010llx.sysmmu\n", lwis_dev->name,
+			port_name, iommus_reg);
+		pr_err("\n");
+	}
+	pr_err("IOMMU Page Fault at Address: 0x%llx Flag: 0x%08x. Check dmesg for sysmmu errors\n",
+	       fault->event.addr, fault->event.flags);
 	pr_err("\n");
 	lwis_debug_print_transaction_info(lwis_dev);
 	pr_err("\n");
@@ -94,12 +109,14 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 	const int core_clock_qos = 67000;
 	/* const int hpg_qos = 1; */
 
-	if (!lwis_dev)
+	if (!lwis_dev) {
 		return -ENODEV;
+	}
 
 	platform = lwis_dev->platform;
-	if (!platform)
+	if (!platform) {
 		return -ENODEV;
+	}
 
 	/* Upref the runtime power management controls for the platform dev */
 	ret = pm_runtime_get_sync(&lwis_dev->plat_dev->dev);
@@ -122,14 +139,14 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 	/*
 	 * PM_QOS_CPU_ONLINE_MIN is not defined in 5.4 branch, will need to
 	 * revisit and see if a replacement is needed.
-	 *
-	 * // Set hardcoded DVFS levels
-	 * if (!exynos_pm_qos_request_active(&platform->pm_qos_hpg)) {
-	 *   exynos_pm_qos_add_request(&platform->pm_qos_hpg,
-	 *				  PM_QOS_CPU_ONLINE_MIN, hpg_qos);
-	 * }
 	 */
-
+#if 0
+	/* Set hardcoded DVFS levels */
+	if (!exynos_pm_qos_request_active(&platform->pm_qos_hpg)) {
+		exynos_pm_qos_add_request(&platform->pm_qos_hpg,
+					  PM_QOS_CPU_ONLINE_MIN, hpg_qos);
+	}
+#endif
 	if (lwis_dev->clock_family != CLOCK_FAMILY_INVALID &&
 	    lwis_dev->clock_family < NUM_CLOCK_FAMILY) {
 		ret = lwis_platform_update_qos(lwis_dev, core_clock_qos, lwis_dev->clock_family);
@@ -161,23 +178,24 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 
 int lwis_platform_device_disable(struct lwis_device *lwis_dev)
 {
-	int iommus_len;
+	int iommus_len = 0;
 	struct lwis_platform *platform;
 
-	if (!lwis_dev)
+	if (!lwis_dev) {
 		return -ENODEV;
+	}
 
 	platform = lwis_dev->platform;
-	if (!platform)
+	if (!platform) {
 		return -ENODEV;
+	}
 
 	if (lwis_dev->bts_index != BTS_UNSUPPORTED && lwis_dev->bts_scenario_name) {
 		bts_del_scenario(lwis_dev->bts_scenario);
 	}
 
 	/* We can't remove fault handlers, so there's no call corresponding
-	 * to the iommu_register_device_fault_handler above
-	 */
+	 * to the iommu_register_device_fault_handler above */
 
 	lwis_platform_remove_qos(lwis_dev);
 
@@ -198,12 +216,14 @@ int lwis_platform_update_qos(struct lwis_device *lwis_dev, int value,
 	struct exynos_pm_qos_request __maybe_unused *qos_req;
 	int __maybe_unused qos_class;
 
-	if (!lwis_dev)
+	if (!lwis_dev) {
 		return -ENODEV;
+	}
 
 	platform = lwis_dev->platform;
-	if (!platform)
+	if (!platform) {
 		return -ENODEV;
+	}
 
 	switch (clock_family) {
 	case CLOCK_FAMILY_INTCAM:
@@ -248,12 +268,15 @@ int lwis_platform_remove_qos(struct lwis_device *lwis_dev)
 {
 	struct lwis_platform *platform;
 
-	if (!lwis_dev)
+	if (!lwis_dev) {
 		return -ENODEV;
+	}
 
 	platform = lwis_dev->platform;
-	if (!platform)
+	if (!platform) {
 		return -ENODEV;
+	}
+
 	/* Should uncomment this block once pm_qos is supported.
 	 * if (exynos_pm_qos_request_active(&platform->pm_qos_int))
 	 *	exynos_pm_qos_remove_request(&platform->pm_qos_int);
@@ -299,9 +322,10 @@ int lwis_platform_update_bts(struct lwis_device *lwis_dev, unsigned int bw_kb_pe
 	if (ret < 0) {
 		dev_err(lwis_dev->dev, "Failed to update bandwidth to bts, ret: %d\n", ret);
 	} else {
-		dev_info(lwis_dev->dev,
-			 "Updated bandwidth to bts for device %s: peak: %u, read: %u, write: %u, rt: %u\n",
-			 lwis_dev->name, bw_kb_peak, bw_kb_read, bw_kb_write, bw_kb_rt);
+		dev_info(
+			lwis_dev->dev,
+			"Updated bandwidth to bts for device %s: peak: %u, read: %u, write: %u, rt: %u\n",
+			lwis_dev->name, bw_kb_peak, bw_kb_read, bw_kb_write, bw_kb_rt);
 	}
 	return ret;
 }
@@ -309,6 +333,5 @@ int lwis_platform_update_bts(struct lwis_device *lwis_dev, unsigned int bw_kb_pe
 int lwis_plaform_set_default_irq_affinity(unsigned int irq)
 {
 	const int cpu = 0x2;
-
 	return irq_set_affinity_hint(irq, cpumask_of(cpu));
 }
