@@ -148,7 +148,7 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 		}
 	}
 
-	if (lwis_dev->bts_scenario_name) {
+	if (lwis_dev->bts_index != BTS_UNSUPPORTED && lwis_dev->bts_scenario_name) {
 		lwis_dev->bts_scenario = bts_get_scenindex(lwis_dev->bts_scenario_name);
 		if (!lwis_dev->bts_scenario) {
 			dev_err(lwis_dev->dev, "Failed to get default camera BTS scenario.\n");
@@ -171,8 +171,9 @@ int lwis_platform_device_disable(struct lwis_device *lwis_dev)
 	if (!platform)
 		return -ENODEV;
 
-	if (lwis_dev->bts_scenario_name)
+	if (lwis_dev->bts_index != BTS_UNSUPPORTED && lwis_dev->bts_scenario_name) {
 		bts_del_scenario(lwis_dev->bts_scenario);
+	}
 
 	/* We can't remove fault handlers, so there's no call corresponding
 	 * to the iommu_register_device_fault_handler above
