@@ -1076,6 +1076,7 @@ int lwis_transaction_replace_locked(struct lwis_client *client,
 				    struct lwis_transaction *transaction)
 {
 	int ret;
+	int64_t old_transaction_id = transaction->info.id;
 
 	ret = check_transaction_param_locked(client, transaction,
 					     /*is_level_triggered=*/false);
@@ -1083,7 +1084,7 @@ int lwis_transaction_replace_locked(struct lwis_client *client,
 		return ret;
 	}
 
-	ret = cancel_waiting_transaction_locked(client, transaction->info.id);
+	ret = cancel_waiting_transaction_locked(client, old_transaction_id);
 	if (ret) {
 		return ret;
 	}
