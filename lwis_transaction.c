@@ -115,6 +115,11 @@ void lwis_transaction_free(struct lwis_device *lwis_dev, struct lwis_transaction
 	struct lwis_fence_pending_signal *pending_fence;
 	struct list_head *it_fence, *it_fence_tmp;
 
+	if (transaction->is_weak_transaction) {
+		kfree(transaction);
+		return;
+	}
+
 	if (!list_empty(&transaction->completion_fence_list)) {
 		list_for_each_safe (it_fence, it_fence_tmp, &transaction->completion_fence_list) {
 			pending_fence =
@@ -327,6 +332,11 @@ static void cancel_transaction(struct lwis_device *lwis_dev, struct lwis_transac
 	resp.num_entries = 0;
 	resp.results_size_bytes = 0;
 	resp.completion_index = -1;
+
+	if (transaction->is_weak_transaction) {
+		lwis_transaction_free(lwis_dev, transaction);
+		return;
+	}
 
 	if (pending_events) {
 		lwis_pending_event_push(pending_events, info->emit_error_event_id, &resp,
