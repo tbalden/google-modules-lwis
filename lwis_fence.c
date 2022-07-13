@@ -497,6 +497,11 @@ int lwis_add_completion_fence(struct lwis_client *client, struct lwis_transactio
 	}
 	list_add(&fence_pending_signal->node, &transaction->completion_fence_list);
 
+#ifdef LWIS_FENCE_DBG
+		dev_info(client->lwis_dev->dev,
+			 "lwis_fence transaction id %llu add completion fence fd %d ",
+			 transaction->info.id, lwis_fence->fd);
+#endif
 	return 0;
 }
 
