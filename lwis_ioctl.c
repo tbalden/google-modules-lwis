@@ -1095,6 +1095,11 @@ static int ioctl_transaction_submit(struct lwis_client *client,
 	struct lwis_transaction_info k_transaction_info;
 	struct lwis_device *lwis_dev = client->lwis_dev;
 
+	if (lwis_dev->type == DEVICE_TYPE_SLC) {
+		dev_err(lwis_dev->dev, "not supported device type: %d\n", lwis_dev->type);
+		return -EINVAL;
+	}
+
 	ret = construct_transaction(client, msg, &k_transaction);
 	if (ret) {
 		return ret;
