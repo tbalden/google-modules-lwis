@@ -45,15 +45,12 @@ int lwis_platform_probe(struct lwis_device *lwis_dev)
 		return 0;
 	}
 
-	/* Will uncomment when BTS is brought up for casablanca */
-#if 0
 	/* Register to bts */
 	lwis_dev->bts_index = bts_get_bwindex(lwis_dev->name);
 	if (lwis_dev->bts_index < 0) {
 		dev_err(lwis_dev->dev, "Failed to register to BTS, ret: %d\n", lwis_dev->bts_index);
 		lwis_dev->bts_index = BTS_UNSUPPORTED;
 	}
-#endif
 
 	return 0;
 }
