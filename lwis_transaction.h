@@ -31,6 +31,10 @@ struct lwis_transaction {
 	struct list_head process_queue_node;
 	struct hlist_node pending_map_node;
 	int signaled_count;
+	/* Flag used for level trigger conditions, indicating the transaction
+	 * should be queued right after creation
+	 */
+	bool queue_immediately;
 	/* temporary variables to add supports for mixing events and fences in
 	 * trigger_condition. Will be removed and refacter into an union soon.
 	 */

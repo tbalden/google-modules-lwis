@@ -277,7 +277,8 @@ transaction_list_find_or_create(struct lwis_fence *fence, struct lwis_client *ow
 }
 
 static int lwis_trigger_fence_add_transaction(int fence_fd, struct lwis_client *client,
-					      struct lwis_transaction *transaction)
+					      struct lwis_transaction *transaction,
+					      int *fence_status)
 {
 	unsigned long flags;
 	struct file *fp;
@@ -285,6 +286,9 @@ static int lwis_trigger_fence_add_transaction(int fence_fd, struct lwis_client *
 	struct lwis_pending_transaction_id *pending_transaction_id;
 	struct lwis_fence_trigger_transaction_list *tx_list;
 	int ret = 0;
+
+	/* Initialize fence status value */
+	*fence_status = LWIS_FENCE_STATUS_NOT_SIGNALED;
 
 	fp = fget(fence_fd);
 	if (fp == NULL) {
@@ -307,7 +311,8 @@ static int lwis_trigger_fence_add_transaction(int fence_fd, struct lwis_client *
 	pending_transaction_id->id = transaction->info.id;
 
 	spin_lock_irqsave(&lwis_fence->lock, flags);
-	if (lwis_fence->status == LWIS_FENCE_STATUS_NOT_SIGNALED) {
+	*fence_status = lwis_fence->status;
+	if (*fence_status == LWIS_FENCE_STATUS_NOT_SIGNALED) {
 		lwis_fence->fp = fp;
 		tx_list = transaction_list_find_or_create(lwis_fence, client);
 		list_add(&pending_transaction_id->list_node, &tx_list->list);
@@ -319,12 +324,18 @@ static int lwis_trigger_fence_add_transaction(int fence_fd, struct lwis_client *
 		}
 #endif
 	} else {
-		dev_err(client->lwis_dev->dev,
-			"Bad lwis_fence fd-%d already signaled with error code %d \n", fence_fd,
-			lwis_fence->status);
 		kfree(pending_transaction_id);
 		fput(fp);
-		ret = -EINVAL;
+#ifdef LWIS_FENCE_DBG
+		dev_info(
+			client->lwis_dev->dev,
+			"lwis_fence fd-%d not added to transaction id %llu, fence already signaled with error code %d \n",
+			fence_fd, transaction->info.id, *fence_status);
+#endif
+		/* If edge triggering is enabled, return an error */
+		if (!transaction->info.allow_counter_eq) {
+			ret = -EINVAL;
+		}
 	}
 	spin_unlock_irqrestore(&lwis_fence->lock, flags);
 
@@ -379,7 +390,7 @@ bool lwis_event_triggered_condition_ready(struct lwis_transaction *transaction,
 }
 
 bool lwis_fence_triggered_condition_ready(struct lwis_transaction *transaction,
-					  struct lwis_fence *fence)
+					  int fence_status)
 {
 	int32_t operator_type;
 	size_t all_signaled;
@@ -392,14 +403,14 @@ bool lwis_fence_triggered_condition_ready(struct lwis_transaction *transaction,
 	     operator_type == LWIS_TRIGGER_NODE_OPERATOR_OR) &&
 	    transaction->signaled_count == all_signaled) {
 		return true;
-	} else if (operator_type == LWIS_TRIGGER_NODE_OPERATOR_AND && fence->status != 0) {
+	} else if (operator_type == LWIS_TRIGGER_NODE_OPERATOR_AND && fence_status != 0) {
 		/*
 		   This condition is ready to cancel transaction as long as there is
 		   an error condition from fence with operator type "AND".
 		   No matter whether all condition nodes are signaled.
 		*/
 		return true;
-	} else if (operator_type == LWIS_TRIGGER_NODE_OPERATOR_OR && fence->status == 0) {
+	} else if (operator_type == LWIS_TRIGGER_NODE_OPERATOR_OR && fence_status == 0) {
 		return true;
 	} else if (operator_type == LWIS_TRIGGER_NODE_OPERATOR_NONE) {
 		return true;
@@ -414,6 +425,7 @@ int lwis_parse_trigger_condition(struct lwis_client *client, struct lwis_transac
 	struct lwis_device *lwis_dev;
 	int i, ret;
 	int fd_or_err;
+	int fence_status;
 
 	if (!transaction || !client) {
 		dev_err(client->lwis_dev->dev, "Invalid lwis transaction\n");
@@ -447,7 +459,23 @@ int lwis_parse_trigger_condition(struct lwis_client *client, struct lwis_transac
 		} else {
 			ret = lwis_trigger_fence_add_transaction(
 				info->trigger_condition.trigger_nodes[i].fence_fd, client,
-				transaction);
+				transaction, &fence_status);
+			if (ret) {
+				return ret;
+			}
+			/* If level triggering is enabled, check if the trigger condition evaluates
+			 * to true. If so, queue the transaction to be executed immediately.
+			 */
+			if (info->allow_counter_eq &&
+			    fence_status != LWIS_FENCE_STATUS_NOT_SIGNALED) {
+				if (lwis_fence_triggered_condition_ready(transaction,
+									 fence_status)) {
+					if (fence_status != 0) {
+						transaction->resp->error_code = -ECANCELED;
+					}
+					transaction->queue_immediately = true;
+				}
+			}
 		}
 		if (ret) {
 			return ret;
