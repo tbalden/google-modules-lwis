@@ -629,7 +629,6 @@ static int check_transaction_param_locked(struct lwis_client *client,
 	struct lwis_device_event_state *event_state;
 	struct lwis_transaction_info *info = &transaction->info;
 	struct lwis_device *lwis_dev = client->lwis_dev;
-	int ret = 0;
 
 	if (!client) {
 		pr_err("Client is NULL while checking transaction parameter.\n");
@@ -641,26 +640,10 @@ static int check_transaction_param_locked(struct lwis_client *client,
 		return -ENODEV;
 	}
 
-	/* Assign the transaction id */
-	info->id = client->transaction_counter;
+	/* Assign the transaction id and increment transaction counter */
+	info->id = client->transaction_counter++;
 	/* Initialize event counter return value  */
 	info->current_trigger_event_counter = -1LL;
-
-	/* If triggered by trigger_condition */
-	if (lwis_triggered_by_condition(transaction)) {
-		ret = lwis_parse_trigger_condition(client, transaction);
-		if (ret) {
-			return ret;
-		}
-		/* Increment counter now to avoid reusing the id upon failure */
-		client->transaction_counter++;
-	}
-
-	/* If transaction contains completion fences, add them to the transaction */
-	ret = lwis_initialize_completion_fences(client, transaction);
-	if (ret) {
-		return ret;
-	}
 
 	/* Look for the trigger event state, if specified */
 	if (info->trigger_event_id != LWIS_EVENT_ID_NONE) {
@@ -673,6 +656,9 @@ static int check_transaction_param_locked(struct lwis_client *client,
 			/* Event found, return current counter to userspace */
 			info->current_trigger_event_counter = event_state->event_counter;
 		}
+	} else if (!lwis_triggered_by_condition(transaction)) {
+		/* Otherwise it's an immediate transaction */
+		transaction->queue_immediately = true;
 	}
 
 	/* Both trigger event ID and counter are defined */
@@ -683,7 +669,7 @@ static int check_transaction_param_locked(struct lwis_client *client,
 			if (allow_counter_eq) {
 				/* Convert this transaction into an immediate
 				 * one */
-				info->trigger_event_id = LWIS_EVENT_ID_NONE;
+				transaction->queue_immediately = true;
 			} else {
 				return -ENOENT;
 			}
@@ -706,6 +692,28 @@ static int check_transaction_param_locked(struct lwis_client *client,
 	}
 
 	return 0;
+}
+
+static int prepare_transaction_fences_locked(struct lwis_client *client,
+					     struct lwis_transaction *transaction)
+{
+	int ret = 0;
+
+	/* If triggered by trigger_condition */
+	if (lwis_triggered_by_condition(transaction)) {
+		ret = lwis_parse_trigger_condition(client, transaction);
+		if (ret) {
+			return ret;
+		}
+	}
+
+	/* If transaction contains completion fences, add them to the transaction */
+	ret = lwis_initialize_completion_fences(client, transaction);
+	if (ret) {
+		return ret;
+	}
+
+	return ret;
 }
 
 static int prepare_response_locked(struct lwis_client *client, struct lwis_transaction *transaction)
@@ -756,14 +764,7 @@ static int queue_transaction_locked(struct lwis_client *client,
 	struct lwis_transaction_event_list *event_list;
 	struct lwis_transaction_info *info = &transaction->info;
 
-	if (lwis_triggered_by_condition(transaction)) {
-		/* Trigger by trigger conditions. */
-		info->submission_timestamp_ns = ktime_to_ns(ktime_get());
-		add_pending_transaction(client, transaction);
-		return 0;
-	}
-
-	if (info->trigger_event_id == LWIS_EVENT_ID_NONE) {
+	if (transaction->queue_immediately) {
 		/* Immediate trigger. */
 		if (info->run_at_real_time) {
 			list_add_tail(&transaction->process_queue_node,
@@ -775,6 +776,9 @@ static int queue_transaction_locked(struct lwis_client *client,
 			kthread_queue_work(&client->lwis_dev->transaction_worker,
 					   &client->transaction_work);
 		}
+	} else if (lwis_triggered_by_condition(transaction)) {
+		/* Trigger by trigger conditions. */
+		add_pending_transaction(client, transaction);
 	} else {
 		/* Trigger by event. */
 		event_list = event_list_find_or_create(client, info->trigger_event_id);
@@ -786,7 +790,6 @@ static int queue_transaction_locked(struct lwis_client *client,
 		list_add_tail(&transaction->event_list_node, &event_list->list);
 	}
 	info->submission_timestamp_ns = ktime_to_ns(ktime_get());
-	client->transaction_counter++;
 	return 0;
 }
 
@@ -797,12 +800,16 @@ int lwis_transaction_submit_locked(struct lwis_client *client, struct lwis_trans
 
 	ret = check_transaction_param_locked(client, transaction,
 					     /*allow_counter_eq=*/info->allow_counter_eq);
-
 	if (ret) {
 		return ret;
 	}
 
 	ret = prepare_response_locked(client, transaction);
+	if (ret) {
+		return ret;
+	}
+
+	ret = prepare_transaction_fences_locked(client, transaction);
 	if (ret) {
 		return ret;
 	}
@@ -1014,7 +1021,7 @@ void lwis_transaction_fence_trigger(struct lwis_client *client, struct lwis_fenc
 			}
 #endif
 		} else {
-			if (lwis_fence_triggered_condition_ready(transaction, fence)) {
+			if (lwis_fence_triggered_condition_ready(transaction, fence->status)) {
 				hash_del(&transaction->pending_map_node);
 				if (fence->status == 0) {
 					list_add_tail(&transaction->process_queue_node,
@@ -1113,6 +1120,11 @@ int lwis_transaction_replace_locked(struct lwis_client *client,
 	}
 
 	ret = prepare_response_locked(client, transaction);
+	if (ret) {
+		return ret;
+	}
+
+	ret = prepare_transaction_fences_locked(client, transaction);
 	if (ret) {
 		return ret;
 	}

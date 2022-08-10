@@ -67,7 +67,7 @@ bool lwis_event_triggered_condition_ready(struct lwis_transaction *transaction,
 
 
 bool lwis_fence_triggered_condition_ready(struct lwis_transaction *transaction,
-					  struct lwis_fence *fence);
+					  int fence_status);
 
 /*
  *  lwis_parse_trigger_condition: Add the transaction to the associated trigger
@@ -125,7 +125,7 @@ bool lwis_event_triggered_condition_ready(struct lwis_transaction *transaction,
 
 static inline
 bool lwis_fence_triggered_condition_ready(struct lwis_transaction *transaction,
-					  struct lwis_fence *fence)
+					  int fence_status)
 {
 	return false;
 }
