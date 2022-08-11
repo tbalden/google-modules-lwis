@@ -325,7 +325,7 @@ struct lwis_transaction_info {
 	bool run_at_real_time;
 	int64_t emit_success_event_id;
 	int64_t emit_error_event_id;
-	bool allow_counter_eq;
+	bool is_level_triggered;
 	// Output
 	int64_t id;
 	// Only will be set if trigger_event_id is specified.

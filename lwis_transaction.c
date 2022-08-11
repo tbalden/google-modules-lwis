@@ -624,7 +624,7 @@ int lwis_trigger_event_add_weak_transaction(struct lwis_client *client,
 
 static int check_transaction_param_locked(struct lwis_client *client,
 					  struct lwis_transaction *transaction,
-					  bool allow_counter_eq)
+					  bool is_level_triggered)
 {
 	struct lwis_device_event_state *event_state;
 	struct lwis_transaction_info *info = &transaction->info;
@@ -666,7 +666,7 @@ static int check_transaction_param_locked(struct lwis_client *client,
 	    EXPLICIT_EVENT_COUNTER(info->trigger_event_counter)) {
 		/* Check if event has happened already */
 		if (info->trigger_event_counter == info->current_trigger_event_counter) {
-			if (allow_counter_eq) {
+			if (is_level_triggered) {
 				/* Convert this transaction into an immediate
 				 * one */
 				transaction->queue_immediately = true;
@@ -799,7 +799,7 @@ int lwis_transaction_submit_locked(struct lwis_client *client, struct lwis_trans
 	struct lwis_transaction_info *info = &transaction->info;
 
 	ret = check_transaction_param_locked(client, transaction,
-					     /*allow_counter_eq=*/info->allow_counter_eq);
+					     /*is_level_triggered=*/info->is_level_triggered);
 	if (ret) {
 		return ret;
 	}
@@ -1109,7 +1109,7 @@ int lwis_transaction_replace_locked(struct lwis_client *client,
 	int64_t old_transaction_id = transaction->info.id;
 
 	ret = check_transaction_param_locked(client, transaction,
-					     /*allow_counter_eq=*/false);
+					     /*is_level_triggered=*/false);
 	if (ret) {
 		return ret;
 	}

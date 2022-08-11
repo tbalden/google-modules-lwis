@@ -333,7 +333,7 @@ static int lwis_trigger_fence_add_transaction(int fence_fd, struct lwis_client *
 			fence_fd, transaction->info.id, *fence_status);
 #endif
 		/* If edge triggering is enabled, return an error */
-		if (!transaction->info.allow_counter_eq) {
+		if (!transaction->info.is_level_triggered) {
 			ret = -EINVAL;
 		}
 	}
@@ -466,7 +466,7 @@ int lwis_parse_trigger_condition(struct lwis_client *client, struct lwis_transac
 			/* If level triggering is enabled, check if the trigger condition evaluates
 			 * to true. If so, queue the transaction to be executed immediately.
 			 */
-			if (info->allow_counter_eq &&
+			if (info->is_level_triggered &&
 			    fence_status != LWIS_FENCE_STATUS_NOT_SIGNALED) {
 				if (lwis_fence_triggered_condition_ready(transaction,
 									 fence_status)) {
