@@ -236,12 +236,14 @@ int lwis_platform_update_qos(struct lwis_device *lwis_dev, int value, int32_t cl
 			lwis_dev->clock_family);
 		return -EINVAL;
 	}
-	/* Should uncomment this block once pm_qos is supported.
-	 * if (!exynos_pm_qos_request_active(qos_req))
-	 *	exynos_pm_qos_add_request(qos_req, qos_class, value);
-	 * else
-	 *	exynos_pm_qos_update_request(qos_req, value);
-	 */
+
+#if IS_ENABLED(CONFIG_EXYNOS_PM_QOS) || IS_ENABLED(CONFIG_EXYNOS_PM_QOS_MODULE)
+	if (!exynos_pm_qos_request_active(qos_req)) {
+		exynos_pm_qos_add_request(qos_req, qos_class, value);
+	} else {
+		exynos_pm_qos_update_request(qos_req, value);
+	}
+#endif
 
 	dev_info(lwis_dev->dev, "Updating clock for clock_family %d, freq to %u\n", clock_family,
 		 value);
@@ -262,8 +264,7 @@ int lwis_platform_remove_qos(struct lwis_device *lwis_dev)
 		return -ENODEV;
 	}
 
-	/* Should uncomment this block once pm_qos is supported. */
-#if 0
+#if IS_ENABLED(CONFIG_EXYNOS_PM_QOS) || IS_ENABLED(CONFIG_EXYNOS_PM_QOS_MODULE)
 	if (exynos_pm_qos_request_active(&platform->pm_qos_int)) {
 		exynos_pm_qos_remove_request(&platform->pm_qos_int);
 	}
