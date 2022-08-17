@@ -18,6 +18,9 @@
 
 #define LWIS_CLIENTS_HASH_BITS 8
 
+#ifdef LWIS_FENCE_ENABLED
+extern bool lwis_fence_debug;
+#endif
 struct lwis_fence {
 	int fd;
 	struct file *fp;
