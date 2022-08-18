@@ -23,7 +23,6 @@ extern bool lwis_fence_debug;
 #endif
 struct lwis_fence {
 	int fd;
-	struct file *fp;
 	int status;
 	spinlock_t lock;
 	/* Top device for printing logs */
@@ -41,6 +40,7 @@ struct lwis_fence_trigger_transaction_list {
 };
 
 struct lwis_fence_pending_signal {
+	struct file *fp;
 	struct lwis_fence *fence;
 	int pending_status;
 	struct list_head node;
@@ -94,7 +94,8 @@ int lwis_initialize_completion_fences(struct lwis_client *client,
 				      struct lwis_transaction *transaction);
 
 /* lwis_fence_pending_signal_create: Creates and returns a lwis_fence_pending_signal list entry */
-struct lwis_fence_pending_signal *lwis_fence_pending_signal_create(struct lwis_fence *fence);
+struct lwis_fence_pending_signal *lwis_fence_pending_signal_create(struct lwis_fence *fence,
+								   struct file *fp);
 
 /*
  *  lwis_fences_pending_signal_emit: Signal all lwis_fence_pending_signals in the pending_fences list

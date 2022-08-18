@@ -286,6 +286,12 @@ static int lwis_trigger_fence_add_transaction(int fence_fd, struct lwis_client *
 	struct lwis_fence_trigger_transaction_list *tx_list;
 	int ret = 0;
 
+	if (transaction->num_trigger_fences >= LWIS_TRIGGER_NODES_MAX_NUM) {
+		dev_err(client->lwis_dev->dev,
+			"Invalid num_trigger_fences value in transaction %d\n", fence_fd);
+		return -EINVAL;
+	}
+
 	fp = fget(fence_fd);
 	if (fp == NULL) {
 		dev_err(client->lwis_dev->dev, "Failed to find lwis_fence with fd %d\n", fence_fd);
@@ -293,6 +299,7 @@ static int lwis_trigger_fence_add_transaction(int fence_fd, struct lwis_client *
 	}
 	lwis_fence = fp->private_data;
 	if (lwis_fence->fd != fence_fd) {
+		fput(fp);
 		dev_err(client->lwis_dev->dev,
 			"Invalid lwis_fence with fd %d. Contains stale data \n", fence_fd);
 		return -EBADF;
@@ -300,6 +307,7 @@ static int lwis_trigger_fence_add_transaction(int fence_fd, struct lwis_client *
 
 	pending_transaction_id = kmalloc(sizeof(struct lwis_pending_transaction_id), GFP_ATOMIC);
 	if (!pending_transaction_id) {
+		fput(fp);
 		dev_err(client->lwis_dev->dev,
 			"Failed to allocate lwis_pending_transaction_id at adding transactions to fence\n");
 		return -ENOMEM;
@@ -308,7 +316,7 @@ static int lwis_trigger_fence_add_transaction(int fence_fd, struct lwis_client *
 
 	spin_lock_irqsave(&lwis_fence->lock, flags);
 	if (lwis_fence->status == LWIS_FENCE_STATUS_NOT_SIGNALED) {
-		lwis_fence->fp = fp;
+		transaction->trigger_fence_fps[transaction->num_trigger_fences++] = fp;
 		tx_list = transaction_list_find_or_create(lwis_fence, client);
 		list_add(&pending_transaction_id->list_node, &tx_list->list);
 #ifdef LWIS_FENCE_ENABLED
@@ -320,7 +328,6 @@ static int lwis_trigger_fence_add_transaction(int fence_fd, struct lwis_client *
 #endif
 	} else {
 		kfree(pending_transaction_id);
-		fput(fp);
 #ifdef LWIS_FENCE_DBG
 		dev_info(
 			client->lwis_dev->dev,
@@ -329,19 +336,18 @@ static int lwis_trigger_fence_add_transaction(int fence_fd, struct lwis_client *
 #endif
 		if (!transaction->info.is_level_triggered) {
 			/* If level triggering is disabled, return an error. */
+			fput(fp);
 			ret = -EINVAL;
 		} else {
+			transaction->trigger_fence_fps[transaction->num_trigger_fences++] = fp;
 			/* If the transaction's trigger_condition evaluates to true, queue the
 			 * transaction to be executed immediately.
 			 */
-			if (lwis_fence->status != LWIS_FENCE_STATUS_NOT_SIGNALED) {
-				if (lwis_fence_triggered_condition_ready(transaction,
-									 lwis_fence->status)) {
-					if (lwis_fence->status != 0) {
-						transaction->resp->error_code = -ECANCELED;
-					}
-					transaction->queue_immediately = true;
+			if (lwis_fence_triggered_condition_ready(transaction, lwis_fence->status)) {
+				if (lwis_fence->status != 0) {
+					transaction->resp->error_code = -ECANCELED;
 				}
+				transaction->queue_immediately = true;
 			}
 		}
 	}
@@ -509,9 +515,9 @@ int lwis_add_completion_fence(struct lwis_client *client, struct lwis_transactio
 		dev_err(lwis_dev->dev, "Failed to find lwis_fence with fd %d\n", fence_fd);
 		return -EBADF;
 	}
+
 	lwis_fence = fp->private_data;
-	lwis_fence->fp = fp;
-	fence_pending_signal = lwis_fence_pending_signal_create(lwis_fence);
+	fence_pending_signal = lwis_fence_pending_signal_create(lwis_fence, fp);
 	if (fence_pending_signal == NULL) {
 		return -ENOMEM;
 	}
@@ -551,7 +557,8 @@ int lwis_initialize_completion_fences(struct lwis_client *client,
 	return 0;
 }
 
-struct lwis_fence_pending_signal *lwis_fence_pending_signal_create(struct lwis_fence *fence)
+struct lwis_fence_pending_signal *lwis_fence_pending_signal_create(struct lwis_fence *fence,
+								   struct file *fp)
 {
 	struct lwis_fence_pending_signal *pending_fence_signal =
 		kmalloc(sizeof(struct lwis_fence_pending_signal), GFP_ATOMIC);
@@ -560,6 +567,7 @@ struct lwis_fence_pending_signal *lwis_fence_pending_signal_create(struct lwis_f
 			"Cannot allocate new fence pending signal list\n");
 		return NULL;
 	}
+	pending_fence_signal->fp = fp;
 	pending_fence_signal->fence = fence;
 	pending_fence_signal->pending_status = LWIS_FENCE_STATUS_NOT_SIGNALED;
 	return pending_fence_signal;
@@ -580,7 +588,7 @@ void lwis_fences_pending_signal_emit(struct lwis_device *lwis_device,
 				pending_fence->fence->fd);
 		}
 		list_del(&pending_fence->node);
-		fput(pending_fence->fence->fp);
+		fput(pending_fence->fp);
 		kfree(pending_fence);
 	}
 }

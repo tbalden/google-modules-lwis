@@ -127,9 +127,14 @@ void lwis_transaction_free(struct lwis_device *lwis_dev, struct lwis_transaction
 			pending_fence =
 				list_entry(it_fence, struct lwis_fence_pending_signal, node);
 			list_del(&pending_fence->node);
-			fput(pending_fence->fence->fp);
+			fput(pending_fence->fp);
 			kfree(pending_fence);
 		}
+	}
+
+	for (i = 0; i < transaction->num_trigger_fences; i++) {
+		fput(transaction->trigger_fence_fps[i]);
+		transaction->trigger_fence_fps[i] = NULL;
 	}
 
 	for (i = 0; i < transaction->info.num_io_entries; ++i) {
@@ -1043,7 +1048,6 @@ void lwis_transaction_fence_trigger(struct lwis_client *client, struct lwis_fenc
 		}
 
 		kfree(transaction_id);
-		fput(fence->fp);
 	}
 
 	/* Schedule deferred transactions */
