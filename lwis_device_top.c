@@ -10,6 +10,7 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME "-top-dev: " fmt
 
+#include "lwis_debug.h"
 #include "lwis_device_top.h"
 #include "lwis_event.h"
 #include "lwis_init.h"
@@ -388,6 +389,7 @@ static int lwis_top_register_io(struct lwis_device *lwis_dev, struct lwis_io_ent
 		dev_err(top_dev->base_dev.dev, "IO entry is NULL.\n");
 		return -EINVAL;
 	}
+	lwis_debug_save_register_io_to_history(lwis_dev, entry, access_size);
 
 	if (entry->type == LWIS_IO_ENTRY_READ) {
 		if (entry->rw.offset >= SCRATCH_MEMORY_SIZE) {
