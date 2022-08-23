@@ -295,6 +295,81 @@ static int generate_buffer_info(struct lwis_device *lwis_dev, char *buffer, size
 	return 0;
 }
 
+void lwis_debug_save_register_io_to_history(struct lwis_device *lwis_dev,
+					    struct lwis_io_entry *entry, size_t access_size)
+{
+	lwis_dev->debug_info.io_entry_hist[lwis_dev->debug_info.cur_io_entry_hist_idx].io_entry =
+		*entry;
+	lwis_dev->debug_info.io_entry_hist[lwis_dev->debug_info.cur_io_entry_hist_idx].access_size =
+		access_size;
+	lwis_dev->debug_info.io_entry_hist[lwis_dev->debug_info.cur_io_entry_hist_idx]
+		.start_timestamp = ktime_to_ns(lwis_get_time());
+	lwis_dev->debug_info.cur_io_entry_hist_idx++;
+	if (lwis_dev->debug_info.cur_io_entry_hist_idx >= IO_ENTRY_DEBUG_HISTORY_SIZE) {
+		lwis_dev->debug_info.cur_io_entry_hist_idx = 0;
+	}
+}
+
+int lwis_debug_print_register_io_history(struct lwis_device *lwis_dev)
+{
+	int i, hist_idx;
+	struct lwis_register_io_info *reg_io;
+
+	/* TODO(bian): Change dev_warn to print_to_log style. */
+	dev_warn(lwis_dev->dev, "=== LWIS REGISTER IO INFO: %s ===", lwis_dev->name);
+	dev_warn(lwis_dev->dev, "Last register read/writes:\n");
+	hist_idx = lwis_dev->debug_info.cur_io_entry_hist_idx;
+	for (i = 0; i < IO_ENTRY_DEBUG_HISTORY_SIZE; ++i) {
+		reg_io = &lwis_dev->debug_info.io_entry_hist[hist_idx];
+		/* Skip uninitialized entries */
+		if (reg_io->start_timestamp != 0) {
+			if (reg_io->io_entry.type == LWIS_IO_ENTRY_READ) {
+				dev_warn(
+					lwis_dev->dev,
+					"READ: bid %d, offset %llu, val %llu, access_size %lu, start_timestamp %llu\n",
+					reg_io->io_entry.rw.bid, reg_io->io_entry.rw.offset,
+					reg_io->io_entry.rw.val, reg_io->access_size,
+					reg_io->start_timestamp);
+			} else if (reg_io->io_entry.type == LWIS_IO_ENTRY_READ_BATCH) {
+				dev_warn(
+					lwis_dev->dev,
+					"READ_BATCH: bid %d, offset %llu, size_in_bytes %lu, access_size %lu, start_timestamp %llu\n",
+					reg_io->io_entry.rw_batch.bid,
+					reg_io->io_entry.rw_batch.offset,
+					reg_io->io_entry.rw_batch.size_in_bytes,
+					reg_io->access_size, reg_io->start_timestamp);
+			} else if (reg_io->io_entry.type == LWIS_IO_ENTRY_WRITE) {
+				dev_warn(
+					lwis_dev->dev,
+					"WRITE: bid %d, offset %llu, val %llu, access_size %lu, start_timestamp %llu\n",
+					reg_io->io_entry.rw.bid, reg_io->io_entry.rw.offset,
+					reg_io->io_entry.rw.val, reg_io->access_size,
+					reg_io->start_timestamp);
+			} else if (reg_io->io_entry.type == LWIS_IO_ENTRY_WRITE_BATCH) {
+				dev_warn(
+					lwis_dev->dev,
+					"WRITE_BATCH: bid %d, offset %llu, size_in_bytes %lu, access_size %lu, start_timestamp %llu\n",
+					reg_io->io_entry.rw_batch.bid,
+					reg_io->io_entry.rw_batch.offset,
+					reg_io->io_entry.rw_batch.size_in_bytes,
+					reg_io->access_size, reg_io->start_timestamp);
+			} else if (reg_io->io_entry.type == LWIS_IO_ENTRY_MODIFY) {
+				dev_warn(
+					lwis_dev->dev,
+					"MODIFY: bid %d, offset %llu, access_size %lu, start_timestamp %llu\n",
+					reg_io->io_entry.mod.bid, reg_io->io_entry.mod.offset,
+					reg_io->access_size, reg_io->start_timestamp);
+			}
+		}
+		hist_idx++;
+		if (hist_idx >= IO_ENTRY_DEBUG_HISTORY_SIZE) {
+			hist_idx = 0;
+		}
+	}
+
+	return 0;
+}
+
 int lwis_debug_print_device_info(struct lwis_device *lwis_dev)
 {
 	int ret = 0;

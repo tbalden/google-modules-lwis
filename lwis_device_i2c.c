@@ -10,6 +10,7 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME "-i2c-dev: " fmt
 
+#include "lwis_debug.h"
 #include "lwis_device_i2c.h"
 
 #include <linux/device.h>
@@ -139,6 +140,8 @@ static int lwis_i2c_register_io(struct lwis_device *lwis_dev, struct lwis_io_ent
 	if (in_interrupt()) {
 		return -EAGAIN;
 	}
+	lwis_debug_save_register_io_to_history(lwis_dev, entry, access_size);
+
 	return lwis_i2c_io_entry_rw(i2c_dev, entry);
 }
 

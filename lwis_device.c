@@ -37,6 +37,7 @@
 #include "lwis_pinctrl.h"
 #include "lwis_platform.h"
 #include "lwis_transaction.h"
+#include "lwis_util.h"
 #include "lwis_version.h"
 
 #ifdef CONFIG_OF
@@ -1085,7 +1086,6 @@ void lwis_dev_power_seq_list_print(struct lwis_device_power_sequence_list *list)
 static struct lwis_device *find_top_dev(void)
 {
 	struct lwis_device *lwis_dev;
-
 	mutex_lock(&core.lock);
 	list_for_each_entry (lwis_dev, &core.lwis_dev_list, dev_list) {
 		if (lwis_dev->type == DEVICE_TYPE_TOP) {
