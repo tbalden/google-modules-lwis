@@ -277,8 +277,7 @@ transaction_list_find_or_create(struct lwis_fence *fence, struct lwis_client *ow
 }
 
 static int lwis_trigger_fence_add_transaction(int fence_fd, struct lwis_client *client,
-					      struct lwis_transaction *transaction,
-					      int *fence_status)
+					      struct lwis_transaction *transaction)
 {
 	unsigned long flags;
 	struct file *fp;
@@ -286,9 +285,6 @@ static int lwis_trigger_fence_add_transaction(int fence_fd, struct lwis_client *
 	struct lwis_pending_transaction_id *pending_transaction_id;
 	struct lwis_fence_trigger_transaction_list *tx_list;
 	int ret = 0;
-
-	/* Initialize fence status value */
-	*fence_status = LWIS_FENCE_STATUS_NOT_SIGNALED;
 
 	fp = fget(fence_fd);
 	if (fp == NULL) {
@@ -311,8 +307,7 @@ static int lwis_trigger_fence_add_transaction(int fence_fd, struct lwis_client *
 	pending_transaction_id->id = transaction->info.id;
 
 	spin_lock_irqsave(&lwis_fence->lock, flags);
-	*fence_status = lwis_fence->status;
-	if (*fence_status == LWIS_FENCE_STATUS_NOT_SIGNALED) {
+	if (lwis_fence->status == LWIS_FENCE_STATUS_NOT_SIGNALED) {
 		lwis_fence->fp = fp;
 		tx_list = transaction_list_find_or_create(lwis_fence, client);
 		list_add(&pending_transaction_id->list_node, &tx_list->list);
@@ -330,11 +325,24 @@ static int lwis_trigger_fence_add_transaction(int fence_fd, struct lwis_client *
 		dev_info(
 			client->lwis_dev->dev,
 			"lwis_fence fd-%d not added to transaction id %llu, fence already signaled with error code %d \n",
-			fence_fd, transaction->info.id, *fence_status);
+			fence_fd, transaction->info.id, lwis_fence->status);
 #endif
-		/* If edge triggering is enabled, return an error */
 		if (!transaction->info.is_level_triggered) {
+			/* If level triggering is disabled, return an error. */
 			ret = -EINVAL;
+		} else {
+			/* If the transaction's trigger_condition evaluates to true, queue the
+			 * transaction to be executed immediately.
+			 */
+			if (lwis_fence->status != LWIS_FENCE_STATUS_NOT_SIGNALED) {
+				if (lwis_fence_triggered_condition_ready(transaction,
+									 lwis_fence->status)) {
+					if (lwis_fence->status != 0) {
+						transaction->resp->error_code = -ECANCELED;
+					}
+					transaction->queue_immediately = true;
+				}
+			}
 		}
 	}
 	spin_unlock_irqrestore(&lwis_fence->lock, flags);
@@ -425,7 +433,6 @@ int lwis_parse_trigger_condition(struct lwis_client *client, struct lwis_transac
 	struct lwis_device *lwis_dev;
 	int i, ret;
 	int fd_or_err;
-	int fence_status;
 
 	if (!transaction || !client) {
 		dev_err(client->lwis_dev->dev, "Invalid lwis transaction\n");
@@ -459,22 +466,9 @@ int lwis_parse_trigger_condition(struct lwis_client *client, struct lwis_transac
 		} else {
 			ret = lwis_trigger_fence_add_transaction(
 				info->trigger_condition.trigger_nodes[i].fence_fd, client,
-				transaction, &fence_status);
+				transaction);
 			if (ret) {
 				return ret;
-			}
-			/* If level triggering is enabled, check if the trigger condition evaluates
-			 * to true. If so, queue the transaction to be executed immediately.
-			 */
-			if (info->is_level_triggered &&
-			    fence_status != LWIS_FENCE_STATUS_NOT_SIGNALED) {
-				if (lwis_fence_triggered_condition_ready(transaction,
-									 fence_status)) {
-					if (fence_status != 0) {
-						transaction->resp->error_code = -ECANCELED;
-					}
-					transaction->queue_immediately = true;
-				}
 			}
 		}
 		if (ret) {
