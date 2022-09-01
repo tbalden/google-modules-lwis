@@ -33,6 +33,16 @@ extern "C" {
  */
 
 /*
+ * Device tree strings have a maximum length of 31, according to specs.
+ * Adding 1 byte for the null character.
+ */
+#define LWIS_MAX_NAME_STRING_LEN 32
+/* Maximum clock number defined in device tree. */
+#define LWIS_MAX_CLOCK_NUM 20
+/* Maximum number of register blocks per device */
+#define LWIS_MAX_REG_NUM 20
+
+/*
  * lwis_device_types
  * top  : top level device that overlooks all the LWIS devices. Will be used to
  *        list the information of the other LWIS devices in the system.
@@ -41,30 +51,26 @@ extern "C" {
  * slc  : for configuring system level cache partitions
  * dpm  : for dynamic power manager requests update.
  */
-#define DEVICE_TYPE_UNKNOWN -1
-#define DEVICE_TYPE_TOP 0
-#define DEVICE_TYPE_I2C 1
-#define DEVICE_TYPE_IOREG 2
-#define DEVICE_TYPE_SLC 3
-#define DEVICE_TYPE_DPM 4
-#define NUM_DEVICE_TYPES 5
+enum lwis_device_types {
+	DEVICE_TYPE_UNKNOWN = -1,
+	DEVICE_TYPE_TOP,
+	DEVICE_TYPE_I2C,
+	DEVICE_TYPE_IOREG,
+	DEVICE_TYPE_SLC,
+	DEVICE_TYPE_DPM,
+	NUM_DEVICE_TYPES
+};
 
-// Qos clock family.
-#define CLOCK_FAMILY_INVALID -1
-#define CLOCK_FAMILY_CAM 0
-#define CLOCK_FAMILY_INTCAM 1
-#define CLOCK_FAMILY_TNR 2
-#define CLOCK_FAMILY_MIF 3
-#define CLOCK_FAMILY_INT 4
-#define NUM_CLOCK_FAMILY 5
-
-/* Device tree strings have a maximum length of 31, according to specs.
-   Adding 1 byte for the null character. */
-#define LWIS_MAX_NAME_STRING_LEN 32
-/* Maximum clock number defined in device tree. */
-#define LWIS_MAX_CLOCK_NUM 20
-/* Maximum reg number defined in device tree. */
-#define LWIS_MAX_REG_NUM 20
+/* Qos clock family. */
+enum lwis_clock_family {
+	CLOCK_FAMILY_INVALID = -1,
+	CLOCK_FAMILY_CAM,
+	CLOCK_FAMILY_INTCAM,
+	CLOCK_FAMILY_TNR,
+	CLOCK_FAMILY_MIF,
+	CLOCK_FAMILY_INT,
+	NUM_CLOCK_FAMILY
+};
 
 struct lwis_clk_setting {
 	// clock name defined in device tree.
