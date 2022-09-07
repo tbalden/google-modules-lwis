@@ -221,6 +221,7 @@ static int lwis_release(struct inode *node, struct file *fp)
 	struct lwis_client *lwis_client = fp->private_data;
 	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
 	int rc = 0;
+	int __maybe_unused i;
 	bool is_client_enabled = lwis_client->is_enabled;
 
 	dev_info(lwis_dev->dev, "Closing instance %d\n", iminor(node));
@@ -242,10 +243,15 @@ static int lwis_release(struct inode *node, struct file *fp)
 	}
 
 	if (lwis_dev->enabled == 0) {
-		if (lwis_dev->bts_index != BTS_UNSUPPORTED) {
-			lwis_platform_update_bts(lwis_dev, /*bw_peak=*/0,
+#ifdef LWIS_BTS_BLOCK_NAME_ENABLED
+		for (i = 0; i < lwis_dev->bts_block_num; i++) {
+			lwis_platform_update_bts(lwis_dev, i, /*bw_peak=*/0,
 						 /*bw_read=*/0, /*bw_write=*/0, /*bw_rt=*/0);
 		}
+#else
+		lwis_platform_update_bts(lwis_dev, 0, /*bw_peak=*/0,
+					 /*bw_read=*/0, /*bw_write=*/0, /*bw_rt=*/0);
+#endif
 		/* remove voted qos */
 		lwis_platform_remove_qos(lwis_dev);
 		/* Release device event states if no more client is using */

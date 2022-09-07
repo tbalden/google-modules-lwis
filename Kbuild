@@ -34,7 +34,7 @@ endif
 ifeq ($(CONFIG_SOC_GS201), y)
 lwis-objs += platform/busan/lwis_platform_busan.o
 lwis-objs += platform/busan/lwis_platform_busan_dma.o
-# ccflags-y += -DLWIS_FENCE_ENABLED
+# ccflags-y += -DLWIS_FENCE_ENABLED -DLWIS_BTS_BLOCK_NAME_ENABLED
 endif
 
 ifneq ($(filter -DLWIS_FENCE_ENABLED, $(ccflags-y)),)
