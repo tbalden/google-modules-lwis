@@ -39,7 +39,7 @@ endif
 ifeq ($(CONFIG_SOC_ZUMA), y)
 lwis-objs += platform/casablanca/lwis_platform_casablanca.o
 lwis-objs += platform/casablanca/lwis_platform_casablanca_dma.o
-ccflags-y += -DLWIS_FENCE_ENABLED
+ccflags-y += -DLWIS_FENCE_ENABLED -DLWIS_BTS_BLOCK_NAME_ENABLED
 endif
 
 ifneq ($(filter -DLWIS_FENCE_ENABLED, $(ccflags-y)),)
