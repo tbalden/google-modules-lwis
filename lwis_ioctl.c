@@ -172,7 +172,7 @@ static int ioctl_get_device_info(struct lwis_device *lwis_dev, struct lwis_devic
 					   .num_regs = 0,
 					   .transaction_worker_thread_pid = -1,
 					   .periodic_io_thread_pid = -1 };
-	strlcpy(k_info.name, lwis_dev->name, LWIS_MAX_NAME_STRING_LEN);
+	strscpy(k_info.name, lwis_dev->name, LWIS_MAX_NAME_STRING_LEN);
 
 	if (lwis_dev->clocks) {
 		k_info.num_clks = lwis_dev->clocks->count;
@@ -182,7 +182,7 @@ static int ioctl_get_device_info(struct lwis_device *lwis_dev, struct lwis_devic
 					"Clock count larger than LWIS_MAX_CLOCK_NUM\n");
 				break;
 			}
-			strlcpy(k_info.clks[i].name, lwis_dev->clocks->clk[i].name,
+			strscpy(k_info.clks[i].name, lwis_dev->clocks->clk[i].name,
 				LWIS_MAX_NAME_STRING_LEN);
 			k_info.clks[i].clk_index = i;
 			k_info.clks[i].frequency = 0;
@@ -200,7 +200,7 @@ static int ioctl_get_device_info(struct lwis_device *lwis_dev, struct lwis_devic
 						"Reg count larger than LWIS_MAX_REG_NUM\n");
 					break;
 				}
-				strlcpy(k_info.regs[i].name, ioreg_dev->reg_list.block[i].name,
+				strscpy(k_info.regs[i].name, ioreg_dev->reg_list.block[i].name,
 					LWIS_MAX_NAME_STRING_LEN);
 				k_info.regs[i].reg_index = i;
 				k_info.regs[i].start = ioreg_dev->reg_list.block[i].start;
@@ -1479,6 +1479,68 @@ static int cmd_time_query(struct lwis_device *lwis_dev, struct lwis_cmd_pkt *hea
 	return cmd_copy_to_user(lwis_dev, u_msg, (void *)&time_query, sizeof(time_query));
 }
 
+static int cmd_get_device_info(struct lwis_device *lwis_dev, struct lwis_cmd_pkt *header,
+			       struct lwis_cmd_device_info __user *u_msg)
+{
+	int i;
+	struct lwis_cmd_device_info k_info = { .header.cmd_id = header->cmd_id,
+					       .header.next = header->next,
+					       .info.id = lwis_dev->id,
+					       .info.type = lwis_dev->type,
+					       .info.num_clks = 0,
+					       .info.num_regs = 0,
+					       .info.transaction_worker_thread_pid = -1,
+					       .info.periodic_io_thread_pid = -1 };
+	strscpy(k_info.info.name, lwis_dev->name, LWIS_MAX_NAME_STRING_LEN);
+
+	if (lwis_dev->clocks) {
+		k_info.info.num_clks = lwis_dev->clocks->count;
+		for (i = 0; i < lwis_dev->clocks->count; i++) {
+			if (i >= LWIS_MAX_CLOCK_NUM) {
+				dev_err(lwis_dev->dev,
+					"Clock count larger than LWIS_MAX_CLOCK_NUM\n");
+				break;
+			}
+			strscpy(k_info.info.clks[i].name, lwis_dev->clocks->clk[i].name,
+				LWIS_MAX_NAME_STRING_LEN);
+			k_info.info.clks[i].clk_index = i;
+			k_info.info.clks[i].frequency = 0;
+		}
+	}
+
+	if (lwis_dev->type == DEVICE_TYPE_IOREG) {
+		struct lwis_ioreg_device *ioreg_dev;
+		ioreg_dev = container_of(lwis_dev, struct lwis_ioreg_device, base_dev);
+		if (ioreg_dev->reg_list.count > 0) {
+			k_info.info.num_regs = ioreg_dev->reg_list.count;
+			for (i = 0; i < ioreg_dev->reg_list.count; i++) {
+				if (i >= LWIS_MAX_REG_NUM) {
+					dev_err(lwis_dev->dev,
+						"Reg count larger than LWIS_MAX_REG_NUM\n");
+					break;
+				}
+				strscpy(k_info.info.regs[i].name, ioreg_dev->reg_list.block[i].name,
+					LWIS_MAX_NAME_STRING_LEN);
+				k_info.info.regs[i].reg_index = i;
+				k_info.info.regs[i].start = ioreg_dev->reg_list.block[i].start;
+				k_info.info.regs[i].size = ioreg_dev->reg_list.block[i].size;
+			}
+		}
+	}
+
+	if (lwis_dev->transaction_worker_thread) {
+		k_info.info.transaction_worker_thread_pid =
+			lwis_dev->transaction_worker_thread->pid;
+	}
+
+	if (lwis_dev->periodic_io_worker_thread) {
+		k_info.info.periodic_io_thread_pid = lwis_dev->periodic_io_worker_thread->pid;
+	}
+
+	k_info.header.ret_code = 0;
+	return cmd_copy_to_user(lwis_dev, u_msg, (void *)&k_info, sizeof(k_info));
+}
+
 static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 				struct lwis_cmd_pkt __user *user_msg)
 {
@@ -1501,6 +1563,10 @@ static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 		case LWIS_CMD_ID_TIME_QUERY:
 			ret = cmd_time_query(lwis_dev, &header,
 					     (struct lwis_cmd_time_query __user *)user_msg);
+			break;
+		case LWIS_CMD_ID_GET_DEVICE_INFO:
+			ret = cmd_get_device_info(lwis_dev, &header,
+						  (struct lwis_cmd_device_info __user *)user_msg);
 			break;
 		default:
 			dev_err_ratelimited(lwis_dev->dev, "Unknown command id\n");
