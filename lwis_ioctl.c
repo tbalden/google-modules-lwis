@@ -1467,6 +1467,18 @@ static int cmd_echo(struct lwis_device *lwis_dev, struct lwis_cmd_pkt *header,
 	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
 }
 
+static int cmd_time_query(struct lwis_device *lwis_dev, struct lwis_cmd_pkt *header,
+			  struct lwis_cmd_time_query __user *u_msg)
+{
+	struct lwis_cmd_time_query time_query;
+	time_query.timestamp_ns = ktime_to_ns(lwis_get_time());
+	time_query.header.cmd_id = header->cmd_id;
+	time_query.header.next = header->next;
+	time_query.header.ret_code = 0;
+
+	return cmd_copy_to_user(lwis_dev, u_msg, (void *)&time_query, sizeof(time_query));
+}
+
 static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 				struct lwis_cmd_pkt __user *user_msg)
 {
@@ -1485,6 +1497,10 @@ static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 		switch (header.cmd_id) {
 		case LWIS_CMD_ID_ECHO:
 			ret = cmd_echo(lwis_dev, &header, (struct lwis_cmd_echo __user *)user_msg);
+			break;
+		case LWIS_CMD_ID_TIME_QUERY:
+			ret = cmd_time_query(lwis_dev, &header,
+					     (struct lwis_cmd_time_query __user *)user_msg);
 			break;
 		default:
 			dev_err_ratelimited(lwis_dev->dev, "Unknown command id\n");
