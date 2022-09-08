@@ -369,6 +369,140 @@ struct lwis_dpm_qos_requirements {
 	size_t num_settings;
 };
 
+enum lwis_cmd_id {
+	LWIS_CMD_ID_ECHO = 0x100,
+	LWIS_CMD_ID_TIME_QUERY = 0x200,
+
+	LWIS_CMD_ID_GET_DEVICE_INFO = 0x10000,
+	LWIS_CMD_ID_DEVICE_ENABLE = 0x10100,
+	LWIS_CMD_ID_DEVICE_DISABLE = 0x10200,
+	LWIS_CMD_ID_DEVICE_RESET = 0x10300,
+
+	LWIS_CMD_ID_DMA_BUFFER_ENROLL = 0x20000,
+	LWIS_CMD_ID_DMA_BUFFER_DISENROLL = 0x20100,
+	LWIS_CMD_ID_DMA_BUFFER_CPU_ACCESS = 0x20200,
+	LWIS_CMD_ID_DMA_BUFFER_ALLOC = 0x20300,
+	LWIS_CMD_ID_DMA_BUFFER_FREE = 0x20400,
+
+	LWIS_CMD_ID_REG_IO = 0x30000,
+
+	LWIS_CMD_ID_EVENT_CONTROL_GET = 0x40000,
+	LWIS_CMD_ID_EVENT_CONTROL_SET = 0x40100,
+	LWIS_CMD_ID_EVENT_DEQUEUE = 0x40200,
+
+	LWIS_CMD_ID_TRANSACTION_SUBMIT = 0x50000,
+	LWIS_CMD_ID_TRANSACTION_CANCEL = 0x50100,
+	LWIS_CMD_ID_TRANSACTION_REPLACE = 0x50200,
+
+	LWIS_CMD_ID_PERIODIC_IO_SUBMIT = 0x60000,
+	LWIS_CMD_ID_PERIODIC_IO_CANCEL = 0x60100,
+
+	LWIS_CMD_ID_DPM_CLK_UPDATE = 0x70000,
+	LWIS_CMD_ID_DPM_QOS_UPDATE = 0x70100,
+	LWIS_CMD_ID_DPM_GET_CLOCK = 0x70200
+};
+
+struct lwis_cmd_pkt {
+	uint32_t cmd_id;
+	int32_t ret_code;
+	struct lwis_cmd_pkt *next;
+};
+
+struct lwis_cmd_echo {
+	struct lwis_cmd_pkt header;
+	struct lwis_echo msg;
+};
+
+struct lwis_cmd_time_query {
+	struct lwis_cmd_pkt header;
+	int64_t timestamp_ns;
+};
+
+struct lwis_cmd_device_info {
+	struct lwis_cmd_pkt header;
+	struct lwis_device_info info;
+};
+
+struct lwis_cmd_io_entries {
+	struct lwis_cmd_pkt header;
+	struct lwis_io_entries io;
+};
+
+struct lwis_cmd_dma_buffer_enroll {
+	struct lwis_cmd_pkt header;
+	struct lwis_buffer_info info;
+};
+
+struct lwis_cmd_dma_buffer_disenroll {
+	struct lwis_cmd_pkt header;
+	struct lwis_enrolled_buffer_info info;
+};
+
+struct lwis_cmd_dma_buffer_cpu_access {
+	struct lwis_cmd_pkt header;
+	struct lwis_buffer_cpu_access_op op;
+};
+
+struct lwis_cmd_dma_buffer_alloc {
+	struct lwis_cmd_pkt header;
+	struct lwis_alloc_buffer_info info;
+};
+
+struct lwis_cmd_dma_buffer_free {
+	struct lwis_cmd_pkt header;
+	int32_t fd;
+};
+
+struct lwis_cmd_event_control_get {
+	struct lwis_cmd_pkt header;
+	struct lwis_event_control ctl;
+};
+
+struct lwis_cmd_event_control_set {
+	struct lwis_cmd_pkt header;
+	struct lwis_event_control_list list;
+};
+
+struct lwis_cmd_event_dequeue {
+	struct lwis_cmd_pkt header;
+	struct lwis_event_info info;
+};
+
+struct lwis_cmd_transaction_info {
+	struct lwis_cmd_pkt header;
+	struct lwis_transaction_info info;
+};
+
+struct lwis_cmd_transaction_cancel {
+	struct lwis_cmd_pkt header;
+	int64_t id;
+};
+
+struct lwis_cmd_periodic_io_info {
+	struct lwis_cmd_pkt header;
+	struct lwis_periodic_io_info info;
+};
+
+struct lwis_cmd_periodic_io_cancel {
+	struct lwis_cmd_pkt header;
+	int64_t id;
+};
+
+struct lwis_cmd_dpm_clk_update {
+	struct lwis_cmd_pkt header;
+	struct lwis_dpm_clk_settings settings;
+};
+
+struct lwis_cmd_dpm_qos_update {
+	struct lwis_cmd_pkt header;
+	struct lwis_dpm_qos_requirements reqs;
+};
+
+struct lwis_cmd_dpm_clk_get {
+	struct lwis_cmd_pkt header;
+	struct lwis_qos_setting setting;
+};
+
 /*
  *  IOCTL Commands
  */
@@ -402,6 +536,8 @@ struct lwis_dpm_qos_requirements {
 #define LWIS_DPM_CLK_UPDATE _IOW(LWIS_IOC_TYPE, 50, struct lwis_dpm_clk_settings)
 #define LWIS_DPM_QOS_UPDATE _IOW(LWIS_IOC_TYPE, 51, struct lwis_dpm_qos_requirements)
 #define LWIS_DPM_GET_CLOCK _IOW(LWIS_IOC_TYPE, 52, struct lwis_qos_setting)
+
+#define LWIS_CMD_PACKET _IOWR(LWIS_IOC_TYPE, 100, struct lwis_cmd_pkt)
 
 /*
  * Event payloads

@@ -22,6 +22,7 @@ lwis-objs += lwis_debug.o
 lwis-objs += lwis_io_entry.o
 lwis-objs += lwis_allocator.o
 lwis-objs += lwis_version.o
+lwis-objs += lwis_cmd.o
 
 # Anchorage specific files
 ifeq ($(CONFIG_SOC_GS101), y)
