@@ -1882,6 +1882,39 @@ error_alloc:
 	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
 }
 
+static int cmd_buffer_free(struct lwis_client *lwis_client, struct lwis_cmd_pkt *header,
+			   struct lwis_cmd_dma_buffer_free __user *u_msg)
+{
+	int ret = 0;
+	struct lwis_cmd_dma_buffer_free info;
+	struct lwis_allocated_buffer *buffer;
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+
+	if (copy_from_user((void *)&info, (void __user *)u_msg, sizeof(info))) {
+		dev_err(lwis_dev->dev, "Failed to copy file descriptor from user\n");
+		return -EFAULT;
+	}
+
+	buffer = lwis_client_allocated_buffer_find(lwis_client, info.fd);
+	if (!buffer) {
+		dev_err(lwis_dev->dev, "Cannot find allocated buffer FD %d\n", info.fd);
+		header->ret_code = -ENOENT;
+		return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+	}
+
+	ret = lwis_buffer_free(lwis_client, buffer);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Failed to free buffer FD %d\n", info.fd);
+		header->ret_code = ret;
+		return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+	}
+
+	kfree(buffer);
+
+	header->ret_code = ret;
+	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+}
+
 static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 				struct lwis_cmd_pkt __user *user_msg)
 {
@@ -1939,6 +1972,10 @@ static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 		case LWIS_CMD_ID_DMA_BUFFER_ALLOC:
 			ret = cmd_buffer_alloc(lwis_client, &header,
 					       (struct lwis_cmd_dma_buffer_alloc __user *)user_msg);
+			break;
+		case LWIS_CMD_ID_DMA_BUFFER_FREE:
+			ret = cmd_buffer_free(lwis_client, &header,
+					      (struct lwis_cmd_dma_buffer_free __user *)user_msg);
 			break;
 		default:
 			dev_err_ratelimited(lwis_dev->dev, "Unknown command id\n");
