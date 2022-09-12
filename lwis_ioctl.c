@@ -2331,6 +2331,46 @@ static int cmd_periodic_io_cancel(struct lwis_client *client, struct lwis_cmd_pk
 	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
 }
 
+static int cmd_dpm_clk_update(struct lwis_device *lwis_dev, struct lwis_cmd_pkt *header,
+			      struct lwis_cmd_dpm_clk_update __user *u_msg)
+{
+	int ret;
+	struct lwis_cmd_dpm_clk_update k_msg;
+	struct lwis_clk_setting *clk_settings;
+	size_t buf_size;
+
+	if (copy_from_user((void *)&k_msg, (void __user *)u_msg, sizeof(k_msg))) {
+		dev_err(lwis_dev->dev, "Failed to copy ioctl message from user\n");
+		return -EFAULT;
+	}
+
+	buf_size = sizeof(struct lwis_clk_setting) * k_msg.settings.num_settings;
+	if (buf_size / sizeof(struct lwis_clk_setting) != k_msg.settings.num_settings) {
+		dev_err(lwis_dev->dev, "Failed to copy clk settings due to integer overflow.\n");
+		ret = -EOVERFLOW;
+		goto exit;
+	}
+	clk_settings = kmalloc(buf_size, GFP_KERNEL);
+	if (!clk_settings) {
+		dev_err(lwis_dev->dev, "Failed to allocate clock settings\n");
+		ret = -ENOMEM;
+		goto exit;
+	}
+
+	if (copy_from_user(clk_settings, (void __user *)k_msg.settings.settings, buf_size)) {
+		dev_err(lwis_dev->dev, "Failed to copy clk settings from user\n");
+		kfree(clk_settings);
+		ret = -EFAULT;
+		goto exit;
+	}
+
+	ret = lwis_dpm_update_clock(lwis_dev, clk_settings, k_msg.settings.num_settings);
+	kfree(clk_settings);
+exit:
+	header->ret_code = ret;
+	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+}
+
 static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 				struct lwis_cmd_pkt __user *user_msg)
 {
@@ -2435,6 +2475,10 @@ static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 			ret = cmd_periodic_io_cancel(
 				lwis_client, &header,
 				(struct lwis_cmd_periodic_io_cancel __user *)user_msg);
+			break;
+		case LWIS_CMD_ID_DPM_CLK_UPDATE:
+			ret = cmd_dpm_clk_update(lwis_dev, &header,
+						 (struct lwis_cmd_dpm_clk_update __user *)user_msg);
 			break;
 		default:
 			dev_err_ratelimited(lwis_dev->dev, "Unknown command id\n");
