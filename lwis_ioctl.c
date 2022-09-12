@@ -2235,6 +2235,80 @@ err_exit:
 	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
 }
 
+static int cmd_construct_periodic_io(struct lwis_client *client,
+				     struct lwis_cmd_periodic_io_info __user *u_msg,
+				     struct lwis_periodic_io **periodic_io)
+{
+	int ret = 0;
+	struct lwis_periodic_io *k_periodic_io;
+	struct lwis_cmd_periodic_io_info k_info;
+	struct lwis_device *lwis_dev = client->lwis_dev;
+
+	k_periodic_io = kmalloc(sizeof(struct lwis_periodic_io), GFP_KERNEL);
+	if (!k_periodic_io) {
+		dev_err(lwis_dev->dev, "Failed to allocate periodic io\n");
+		return -ENOMEM;
+	}
+
+	if (copy_from_user((void *)&k_info, (void __user *)u_msg, sizeof(k_info))) {
+		dev_err(lwis_dev->dev, "Failed to copy periodic io info from user\n");
+		ret = -EFAULT;
+		goto error_free_periodic_io;
+	}
+
+	memcpy(&k_periodic_io->info, &k_info.info, sizeof(k_periodic_io->info));
+
+	ret = construct_io_entry(client, k_periodic_io->info.io_entries,
+				 k_periodic_io->info.num_io_entries,
+				 &k_periodic_io->info.io_entries);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Failed to prepare lwis io entries for periodic io\n");
+		goto error_free_periodic_io;
+	}
+
+	k_periodic_io->resp = NULL;
+	k_periodic_io->periodic_io_list = NULL;
+
+	*periodic_io = k_periodic_io;
+	return 0;
+
+error_free_periodic_io:
+	kfree(k_periodic_io);
+	return ret;
+}
+
+static int cmd_periodic_io_submit(struct lwis_client *client, struct lwis_cmd_pkt *header,
+				  struct lwis_cmd_periodic_io_info __user *u_msg)
+{
+	int ret = 0;
+	struct lwis_cmd_periodic_io_info k_periodic_io_info;
+	struct lwis_periodic_io *k_periodic_io = NULL;
+	struct lwis_device *lwis_dev = client->lwis_dev;
+
+	ret = cmd_construct_periodic_io(client, u_msg, &k_periodic_io);
+	if (ret) {
+		goto err_exit;
+	}
+
+	ret = lwis_periodic_io_submit(client, k_periodic_io);
+	k_periodic_io_info.info = k_periodic_io->info;
+	if (ret) {
+		k_periodic_io_info.info.id = LWIS_ID_INVALID;
+		lwis_periodic_io_free(lwis_dev, k_periodic_io);
+		goto err_exit;
+	}
+
+	k_periodic_io_info.header.cmd_id = header->cmd_id;
+	k_periodic_io_info.header.next = header->next;
+	k_periodic_io_info.header.ret_code = ret;
+	return cmd_copy_to_user(lwis_dev, u_msg, (void *)&k_periodic_io_info,
+				sizeof(k_periodic_io_info));
+
+err_exit:
+	header->ret_code = ret;
+	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+}
+
 static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 				struct lwis_cmd_pkt __user *user_msg)
 {
@@ -2329,6 +2403,11 @@ static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 			ret = cmd_transaction_replace(
 				lwis_client, &header,
 				(struct lwis_cmd_transaction_info __user *)user_msg);
+			break;
+		case LWIS_CMD_ID_PERIODIC_IO_SUBMIT:
+			ret = cmd_periodic_io_submit(
+				lwis_client, &header,
+				(struct lwis_cmd_periodic_io_info __user *)user_msg);
 			break;
 		default:
 			dev_err_ratelimited(lwis_dev->dev, "Unknown command id\n");
