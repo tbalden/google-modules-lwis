@@ -2011,6 +2011,93 @@ exit:
 	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
 }
 
+static int cmd_event_dequeue(struct lwis_client *lwis_client, struct lwis_cmd_pkt *header,
+			     struct lwis_cmd_event_dequeue __user *u_msg)
+{
+	struct lwis_cmd_event_dequeue info;
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+	struct lwis_event_entry *event;
+	int ret = 0;
+	int err = 0;
+	bool is_error_event = false;
+
+	if (copy_from_user((void *)&info, (void __user *)u_msg, sizeof(info))) {
+		dev_err(lwis_dev->dev, "Failed to copy %zu bytes from user\n", sizeof(info));
+		return -EFAULT;
+	}
+
+	mutex_lock(&lwis_dev->client_lock);
+	/* Peek at the front element of error event queue first */
+	ret = lwis_client_error_event_peek_front(lwis_client, &event);
+	if (ret == 0) {
+		is_error_event = true;
+	} else if (ret != -ENOENT) {
+		dev_err(lwis_dev->dev, "Error dequeueing error event: %d\n", ret);
+		mutex_unlock(&lwis_dev->client_lock);
+		header->ret_code = ret;
+		return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+	} else {
+		/* Nothing at error event queue, continue to check normal
+		 * event queue */
+		ret = lwis_client_event_peek_front(lwis_client, &event);
+		if (ret) {
+			if (ret != -ENOENT) {
+				dev_err(lwis_dev->dev, "Error dequeueing event: %d\n", ret);
+			}
+			mutex_unlock(&lwis_dev->client_lock);
+			header->ret_code = ret;
+			return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+		}
+	}
+
+	/* We need to check if we have an adequate payload buffer */
+	if (event->event_info.payload_size > info.info.payload_buffer_size) {
+		/* Nope, we don't. Let's inform the user and bail */
+		info.info.payload_size = event->event_info.payload_size;
+		err = -EAGAIN;
+	} else {
+		info.info.event_id = event->event_info.event_id;
+		info.info.event_counter = event->event_info.event_counter;
+		info.info.timestamp_ns = event->event_info.timestamp_ns;
+		info.info.payload_size = event->event_info.payload_size;
+
+		/* Here we have a payload and the buffer is big enough */
+		if (event->event_info.payload_size > 0 && info.info.payload_buffer) {
+			/* Copy over the payload buffer to userspace */
+			if (copy_to_user((void __user *)info.info.payload_buffer,
+					 (void *)event->event_info.payload_buffer,
+					 event->event_info.payload_size)) {
+				dev_err(lwis_dev->dev, "Failed to copy %zu bytes to user\n",
+					event->event_info.payload_size);
+				mutex_unlock(&lwis_dev->client_lock);
+				return -EFAULT;
+			}
+		}
+	}
+	/* If we didn't -EAGAIN up above, we can pop and discard the front of
+	 * the event queue because we're done dealing with it. If we got the
+	 * -EAGAIN case, we didn't actually dequeue this event and userspace
+	 * should try again with a bigger payload_buffer.
+	 */
+	if (!err) {
+		if (is_error_event) {
+			ret = lwis_client_error_event_pop_front(lwis_client, NULL);
+		} else {
+			ret = lwis_client_event_pop_front(lwis_client, NULL);
+		}
+		if (ret) {
+			dev_err(lwis_dev->dev, "Error dequeueing event: %d\n", ret);
+			mutex_unlock(&lwis_dev->client_lock);
+			header->ret_code = ret;
+			return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+		}
+	}
+	mutex_unlock(&lwis_dev->client_lock);
+	/* Now let's copy the actual info struct back to user */
+	info.header.ret_code = err;
+	return cmd_copy_to_user(lwis_dev, u_msg, (void *)&info, sizeof(info));
+}
+
 static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 				struct lwis_cmd_pkt __user *user_msg)
 {
@@ -2086,6 +2173,10 @@ static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 			ret = cmd_event_control_set(
 				lwis_client, &header,
 				(struct lwis_cmd_event_control_set __user *)user_msg);
+			break;
+		case LWIS_CMD_ID_EVENT_DEQUEUE:
+			ret = cmd_event_dequeue(lwis_client, &header,
+						(struct lwis_cmd_event_dequeue __user *)user_msg);
 			break;
 		default:
 			dev_err_ratelimited(lwis_dev->dev, "Unknown command id\n");
