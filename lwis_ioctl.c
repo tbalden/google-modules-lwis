@@ -1643,6 +1643,99 @@ exit_locked:
 	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
 }
 
+static int cmd_copy_io_entries(struct lwis_device *lwis_dev,
+			       struct lwis_cmd_io_entries __user *u_msg,
+			       struct lwis_cmd_io_entries *k_msg, struct lwis_io_entry **k_entries)
+{
+	struct lwis_io_entry *io_entries;
+	uint32_t buf_size;
+
+	/* Register io is not supported for the lwis device, return */
+	if (!lwis_dev->vops.register_io) {
+		dev_err(lwis_dev->dev, "Register IO not supported on this LWIS device\n");
+		return -EINVAL;
+	}
+
+	/* Copy io_entries from userspace */
+	if (copy_from_user(k_msg, (void __user *)u_msg, sizeof(*k_msg))) {
+		dev_err(lwis_dev->dev, "Failed to copy io_entries header from userspace.\n");
+		return -EFAULT;
+	}
+	buf_size = sizeof(struct lwis_io_entry) * k_msg->io.num_io_entries;
+	if (buf_size / sizeof(struct lwis_io_entry) != k_msg->io.num_io_entries) {
+		dev_err(lwis_dev->dev, "Failed to copy io_entries due to integer overflow.\n");
+		return -EOVERFLOW;
+	}
+	io_entries = lwis_allocator_allocate(lwis_dev, buf_size);
+	if (!io_entries) {
+		dev_err(lwis_dev->dev, "Failed to allocate io_entries buffer\n");
+		return -ENOMEM;
+	}
+	if (copy_from_user(io_entries, (void __user *)k_msg->io.io_entries, buf_size)) {
+		dev_err(lwis_dev->dev, "Failed to copy io_entries from userspace.\n");
+		lwis_allocator_free(lwis_dev, io_entries);
+		return -EFAULT;
+	}
+	*k_entries = io_entries;
+
+	return 0;
+}
+
+static int cmd_device_reset(struct lwis_client *lwis_client, struct lwis_cmd_pkt *header,
+			    struct lwis_cmd_io_entries __user *u_msg)
+{
+	int ret = 0;
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+	struct lwis_cmd_io_entries k_msg;
+	struct lwis_io_entry *k_entries = NULL;
+	unsigned long flags;
+	bool device_enabled = false;
+
+	ret = cmd_copy_io_entries(lwis_dev, u_msg, &k_msg, &k_entries);
+	if (ret) {
+		goto soft_reset_exit;
+	}
+
+	/* Clear event states, event queues and transactions for this client */
+	mutex_lock(&lwis_dev->client_lock);
+	lwis_client_event_states_clear(lwis_client);
+	lwis_client_event_queue_clear(lwis_client);
+	lwis_client_error_event_queue_clear(lwis_client);
+	device_enabled = lwis_dev->enabled;
+	mutex_unlock(&lwis_dev->client_lock);
+
+	/* Flush all periodic io to complete */
+	ret = lwis_periodic_io_client_flush(lwis_client);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Failed to wait for in-process periodic io to complete\n");
+	}
+
+	/* Flush all pending transactions */
+	ret = lwis_transaction_client_flush(lwis_client);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Failed to flush all pending transactions\n");
+	}
+
+	/* Perform reset routine defined by the io_entries */
+	if (device_enabled) {
+		ret = synchronous_process_io_entries(lwis_dev, k_msg.io.num_io_entries, k_entries,
+						     k_msg.io.io_entries);
+	} else {
+		dev_warn(lwis_dev->dev,
+			 "Device is not enabled, IoEntries will not be executed in DEVICE_RESET\n");
+	}
+
+	spin_lock_irqsave(&lwis_dev->lock, flags);
+	lwis_device_event_states_clear_locked(lwis_dev);
+	spin_unlock_irqrestore(&lwis_dev->lock, flags);
+soft_reset_exit:
+	if (k_entries) {
+		lwis_allocator_free(lwis_dev, k_entries);
+	}
+	header->ret_code = ret;
+	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+}
+
 static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 				struct lwis_cmd_pkt __user *user_msg)
 {
@@ -1677,6 +1770,10 @@ static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 		case LWIS_CMD_ID_DEVICE_DISABLE:
 			ret = cmd_device_disable(lwis_client, &header,
 						 (struct lwis_cmd_pkt __user *)user_msg);
+			break;
+		case LWIS_CMD_ID_DEVICE_RESET:
+			ret = cmd_device_reset(lwis_client, &header,
+					       (struct lwis_cmd_io_entries __user *)user_msg);
 			break;
 		default:
 			dev_err_ratelimited(lwis_dev->dev, "Unknown command id\n");
