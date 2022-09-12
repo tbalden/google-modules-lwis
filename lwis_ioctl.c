@@ -2425,6 +2425,48 @@ exit:
 	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
 }
 
+static int cmd_dpm_get_clock(struct lwis_device *lwis_dev, struct lwis_cmd_pkt *header,
+			     struct lwis_cmd_dpm_clk_get __user *u_msg)
+{
+	struct lwis_cmd_dpm_clk_get current_setting;
+	struct lwis_device *target_device;
+	int ret = 0;
+
+	if (lwis_dev->type != DEVICE_TYPE_DPM) {
+		dev_err(lwis_dev->dev, "not supported device type: %d\n", lwis_dev->type);
+		ret = -EINVAL;
+		goto err_exit;
+	}
+
+	if (copy_from_user((void *)&current_setting, (void __user *)u_msg,
+			   sizeof(current_setting))) {
+		dev_err(lwis_dev->dev, "failed to copy from user\n");
+		return -EFAULT;
+	}
+
+	target_device = lwis_find_dev_by_id(current_setting.setting.device_id);
+	if (!target_device) {
+		dev_err(lwis_dev->dev, "could not find lwis device by id %d\n",
+			current_setting.setting.device_id);
+		ret = -ENODEV;
+		goto err_exit;
+	}
+
+	if (target_device->enabled == 0 && target_device->type != DEVICE_TYPE_DPM) {
+		dev_warn(target_device->dev, "%s disabled, can't get clk\n", target_device->name);
+		ret = -EPERM;
+		goto err_exit;
+	}
+
+	current_setting.setting.frequency_hz = (int64_t)lwis_dpm_read_clock(target_device);
+	current_setting.header.ret_code = 0;
+	return cmd_copy_to_user(lwis_dev, u_msg, (void *)&current_setting, sizeof(current_setting));
+
+err_exit:
+	header->ret_code = ret;
+	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+}
+
 static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 				struct lwis_cmd_pkt __user *user_msg)
 {
@@ -2537,6 +2579,10 @@ static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 		case LWIS_CMD_ID_DPM_QOS_UPDATE:
 			ret = cmd_dpm_qos_update(lwis_dev, &header,
 						 (struct lwis_cmd_dpm_qos_update __user *)user_msg);
+			break;
+		case LWIS_CMD_ID_DPM_GET_CLOCK:
+			ret = cmd_dpm_get_clock(lwis_dev, &header,
+						(struct lwis_cmd_dpm_clk_get __user *)user_msg);
 			break;
 		default:
 			dev_err_ratelimited(lwis_dev->dev, "Unknown command id\n");
