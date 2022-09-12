@@ -2309,6 +2309,28 @@ err_exit:
 	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
 }
 
+static int cmd_periodic_io_cancel(struct lwis_client *client, struct lwis_cmd_pkt *header,
+				  struct lwis_cmd_periodic_io_cancel __user *u_msg)
+{
+	int ret = 0;
+	struct lwis_cmd_periodic_io_cancel k_msg;
+	struct lwis_device *lwis_dev = client->lwis_dev;
+
+	if (copy_from_user((void *)&k_msg, (void __user *)u_msg, sizeof(k_msg))) {
+		dev_err(lwis_dev->dev, "Failed to copy periodic io ID from user\n");
+		return -EFAULT;
+	}
+
+	ret = lwis_periodic_io_cancel(client, k_msg.id);
+	if (ret) {
+		dev_err_ratelimited(lwis_dev->dev, "Failed to clear periodic io id 0x%llx\n",
+				    k_msg.id);
+	}
+
+	header->ret_code = ret;
+	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+}
+
 static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 				struct lwis_cmd_pkt __user *user_msg)
 {
@@ -2408,6 +2430,11 @@ static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 			ret = cmd_periodic_io_submit(
 				lwis_client, &header,
 				(struct lwis_cmd_periodic_io_info __user *)user_msg);
+			break;
+		case LWIS_CMD_ID_PERIODIC_IO_CANCEL:
+			ret = cmd_periodic_io_cancel(
+				lwis_client, &header,
+				(struct lwis_cmd_periodic_io_cancel __user *)user_msg);
 			break;
 		default:
 			dev_err_ratelimited(lwis_dev->dev, "Unknown command id\n");
