@@ -2371,6 +2371,60 @@ exit:
 	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
 }
 
+static int cmd_dpm_qos_update(struct lwis_device *lwis_dev, struct lwis_cmd_pkt *header,
+			      struct lwis_cmd_dpm_qos_update __user *u_msg)
+{
+	struct lwis_cmd_dpm_qos_update k_msg;
+	struct lwis_qos_setting *k_qos_settings;
+	int ret = 0;
+	int i;
+	size_t buf_size;
+
+	if (lwis_dev->type != DEVICE_TYPE_DPM) {
+		dev_err(lwis_dev->dev, "not supported device type: %d\n", lwis_dev->type);
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	if (copy_from_user((void *)&k_msg, (void __user *)u_msg, sizeof(k_msg))) {
+		dev_err(lwis_dev->dev, "Failed to copy ioctl message from user\n");
+		return -EFAULT;
+	}
+
+	// Copy qos settings from user buffer.
+	buf_size = sizeof(struct lwis_qos_setting) * k_msg.reqs.num_settings;
+	if (buf_size / sizeof(struct lwis_qos_setting) != k_msg.reqs.num_settings) {
+		dev_err(lwis_dev->dev, "Failed to copy qos settings due to integer overflow.\n");
+		ret = -EOVERFLOW;
+		goto exit;
+	}
+	k_qos_settings = kmalloc(buf_size, GFP_KERNEL);
+	if (!k_qos_settings) {
+		dev_err(lwis_dev->dev, "Failed to allocate qos settings\n");
+		ret = -ENOMEM;
+		goto exit;
+	}
+	if (copy_from_user(k_qos_settings, (void __user *)k_msg.reqs.qos_settings, buf_size)) {
+		dev_err(lwis_dev->dev, "Failed to copy clk settings from user\n");
+		kfree(k_qos_settings);
+		ret = -EFAULT;
+		goto exit;
+	}
+
+	for (i = 0; i < k_msg.reqs.num_settings; i++) {
+		ret = lwis_dpm_update_qos(lwis_dev, &k_qos_settings[i]);
+		if (ret) {
+			dev_err(lwis_dev->dev, "Failed to apply qos setting, ret: %d\n", ret);
+			kfree(k_qos_settings);
+			goto exit;
+		}
+	}
+	kfree(k_qos_settings);
+exit:
+	header->ret_code = ret;
+	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+}
+
 static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 				struct lwis_cmd_pkt __user *user_msg)
 {
@@ -2479,6 +2533,10 @@ static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 		case LWIS_CMD_ID_DPM_CLK_UPDATE:
 			ret = cmd_dpm_clk_update(lwis_dev, &header,
 						 (struct lwis_cmd_dpm_clk_update __user *)user_msg);
+			break;
+		case LWIS_CMD_ID_DPM_QOS_UPDATE:
+			ret = cmd_dpm_qos_update(lwis_dev, &header,
+						 (struct lwis_cmd_dpm_qos_update __user *)user_msg);
 			break;
 		default:
 			dev_err_ratelimited(lwis_dev->dev, "Unknown command id\n");
