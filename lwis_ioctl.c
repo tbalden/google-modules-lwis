@@ -1915,6 +1915,30 @@ static int cmd_buffer_free(struct lwis_client *lwis_client, struct lwis_cmd_pkt 
 	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
 }
 
+static int cmd_reg_io(struct lwis_device *lwis_dev, struct lwis_cmd_pkt *header,
+		      struct lwis_cmd_io_entries __user *u_msg)
+{
+	int ret = 0;
+	struct lwis_cmd_io_entries k_msg;
+	struct lwis_io_entry *k_entries = NULL;
+
+	ret = cmd_copy_io_entries(lwis_dev, u_msg, &k_msg, &k_entries);
+	if (ret) {
+		goto reg_io_exit;
+	}
+
+	/* Walk through and execute the entries */
+	ret = synchronous_process_io_entries(lwis_dev, k_msg.io.num_io_entries, k_entries,
+					     k_msg.io.io_entries);
+
+reg_io_exit:
+	if (k_entries) {
+		lwis_allocator_free(lwis_dev, k_entries);
+	}
+	header->ret_code = ret;
+	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+}
+
 static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 				struct lwis_cmd_pkt __user *user_msg)
 {
@@ -1976,6 +2000,10 @@ static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 		case LWIS_CMD_ID_DMA_BUFFER_FREE:
 			ret = cmd_buffer_free(lwis_client, &header,
 					      (struct lwis_cmd_dma_buffer_free __user *)user_msg);
+			break;
+		case LWIS_CMD_ID_REG_IO:
+			ret = cmd_reg_io(lwis_dev, &header,
+					 (struct lwis_cmd_io_entries __user *)user_msg);
 			break;
 		default:
 			dev_err_ratelimited(lwis_dev->dev, "Unknown command id\n");
