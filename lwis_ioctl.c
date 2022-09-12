@@ -1541,6 +1541,49 @@ static int cmd_get_device_info(struct lwis_device *lwis_dev, struct lwis_cmd_pkt
 	return cmd_copy_to_user(lwis_dev, u_msg, (void *)&k_info, sizeof(k_info));
 }
 
+static int cmd_device_enable(struct lwis_client *lwis_client, struct lwis_cmd_pkt *header,
+			     struct lwis_cmd_pkt __user *u_msg)
+{
+	int ret = 0;
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+
+	if (lwis_client->is_enabled) {
+		header->ret_code = 0;
+		return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+	}
+
+	mutex_lock(&lwis_dev->client_lock);
+	if (lwis_dev->enabled > 0 && lwis_dev->enabled < INT_MAX) {
+		lwis_dev->enabled++;
+		lwis_client->is_enabled = true;
+		ret = 0;
+		goto exit_locked;
+	} else if (lwis_dev->enabled == INT_MAX) {
+		dev_err(lwis_dev->dev, "Enable counter overflow\n");
+		ret = -EINVAL;
+		goto exit_locked;
+	}
+
+	/* Clear event queues to make sure there is no stale event from
+	 * previous session */
+	lwis_client_event_queue_clear(lwis_client);
+	lwis_client_error_event_queue_clear(lwis_client);
+
+	ret = lwis_dev_power_up_locked(lwis_dev);
+	if (ret < 0) {
+		dev_err(lwis_dev->dev, "Failed to power up device\n");
+		goto exit_locked;
+	}
+
+	lwis_dev->enabled++;
+	lwis_client->is_enabled = true;
+	dev_info(lwis_dev->dev, "Device enabled\n");
+exit_locked:
+	mutex_unlock(&lwis_dev->client_lock);
+	header->ret_code = ret;
+	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+}
+
 static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 				struct lwis_cmd_pkt __user *user_msg)
 {
@@ -1567,6 +1610,10 @@ static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 		case LWIS_CMD_ID_GET_DEVICE_INFO:
 			ret = cmd_get_device_info(lwis_dev, &header,
 						  (struct lwis_cmd_device_info __user *)user_msg);
+			break;
+		case LWIS_CMD_ID_DEVICE_ENABLE:
+			ret = cmd_device_enable(lwis_client, &header,
+						(struct lwis_cmd_pkt __user *)user_msg);
 			break;
 		default:
 			dev_err_ratelimited(lwis_dev->dev, "Unknown command id\n");
