@@ -2200,6 +2200,41 @@ static int cmd_transaction_cancel(struct lwis_client *client, struct lwis_cmd_pk
 	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
 }
 
+static int cmd_transaction_replace(struct lwis_client *client, struct lwis_cmd_pkt *header,
+				   struct lwis_cmd_transaction_info __user *u_msg)
+{
+	struct lwis_transaction *k_transaction = NULL;
+	struct lwis_cmd_transaction_info k_transaction_info;
+	struct lwis_device *lwis_dev = client->lwis_dev;
+	int ret = 0;
+	unsigned long flags;
+
+	ret = cmd_construct_transaction(client, u_msg, &k_transaction);
+	if (ret) {
+		goto err_exit;
+	}
+
+	spin_lock_irqsave(&client->transaction_lock, flags);
+	ret = lwis_transaction_replace_locked(client, k_transaction);
+	k_transaction_info.info = k_transaction->info;
+	spin_unlock_irqrestore(&client->transaction_lock, flags);
+	if (ret) {
+		k_transaction_info.info.id = LWIS_ID_INVALID;
+		lwis_transaction_free(lwis_dev, k_transaction);
+		goto err_exit;
+	}
+
+	k_transaction_info.header.cmd_id = header->cmd_id;
+	k_transaction_info.header.next = header->next;
+	k_transaction_info.header.ret_code = ret;
+	return cmd_copy_to_user(lwis_dev, u_msg, (void *)&k_transaction_info,
+				sizeof(k_transaction_info));
+
+err_exit:
+	header->ret_code = ret;
+	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+}
+
 static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 				struct lwis_cmd_pkt __user *user_msg)
 {
@@ -2289,6 +2324,11 @@ static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 			ret = cmd_transaction_cancel(
 				lwis_client, &header,
 				(struct lwis_cmd_transaction_cancel __user *)user_msg);
+			break;
+		case LWIS_CMD_ID_TRANSACTION_REPLACE:
+			ret = cmd_transaction_replace(
+				lwis_client, &header,
+				(struct lwis_cmd_transaction_info __user *)user_msg);
 			break;
 		default:
 			dev_err_ratelimited(lwis_dev->dev, "Unknown command id\n");
