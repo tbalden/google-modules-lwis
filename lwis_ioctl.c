@@ -1584,6 +1584,65 @@ exit_locked:
 	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
 }
 
+static int cmd_device_disable(struct lwis_client *lwis_client, struct lwis_cmd_pkt *header,
+			      struct lwis_cmd_pkt __user *u_msg)
+{
+	int ret = 0;
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+
+	if (!lwis_client->is_enabled) {
+		header->ret_code = 0;
+		return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+	}
+
+	mutex_lock(&lwis_dev->client_lock);
+	/* Clear event states for this client */
+	lwis_client_event_states_clear(lwis_client);
+	mutex_unlock(&lwis_dev->client_lock);
+
+	/* Flush all periodic io to complete */
+	ret = lwis_periodic_io_client_flush(lwis_client);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Failed to wait for in-process periodic io to complete\n");
+	}
+
+	/* Flush all pending transactions */
+	ret = lwis_transaction_client_flush(lwis_client);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Failed to flush pending transactions\n");
+	}
+
+	/* Run cleanup transactions. */
+	lwis_transaction_client_cleanup(lwis_client);
+
+	mutex_lock(&lwis_dev->client_lock);
+	if (lwis_dev->enabled > 1) {
+		lwis_dev->enabled--;
+		lwis_client->is_enabled = false;
+		ret = 0;
+		goto exit_locked;
+	} else if (lwis_dev->enabled <= 0) {
+		dev_err(lwis_dev->dev, "Disabling a device that is already disabled\n");
+		ret = -EINVAL;
+		goto exit_locked;
+	}
+
+	ret = lwis_dev_power_down_locked(lwis_dev);
+	if (ret < 0) {
+		dev_err(lwis_dev->dev, "Failed to power down device\n");
+		goto exit_locked;
+	}
+	lwis_device_event_states_clear_locked(lwis_dev);
+
+	lwis_dev->enabled--;
+	lwis_client->is_enabled = false;
+	dev_info(lwis_dev->dev, "Device disabled\n");
+exit_locked:
+	mutex_unlock(&lwis_dev->client_lock);
+	header->ret_code = ret;
+	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+}
+
 static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 				struct lwis_cmd_pkt __user *user_msg)
 {
@@ -1614,6 +1673,10 @@ static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 		case LWIS_CMD_ID_DEVICE_ENABLE:
 			ret = cmd_device_enable(lwis_client, &header,
 						(struct lwis_cmd_pkt __user *)user_msg);
+			break;
+		case LWIS_CMD_ID_DEVICE_DISABLE:
+			ret = cmd_device_disable(lwis_client, &header,
+						 (struct lwis_cmd_pkt __user *)user_msg);
 			break;
 		default:
 			dev_err_ratelimited(lwis_dev->dev, "Unknown command id\n");
