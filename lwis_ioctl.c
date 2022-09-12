@@ -1963,6 +1963,54 @@ static int cmd_event_control_get(struct lwis_client *lwis_client, struct lwis_cm
 	return cmd_copy_to_user(lwis_dev, u_msg, (void *)&control, sizeof(control));
 }
 
+static int cmd_event_control_set(struct lwis_client *lwis_client, struct lwis_cmd_pkt *header,
+				 struct lwis_cmd_event_control_set __user *u_msg)
+{
+	struct lwis_cmd_event_control_set k_msg;
+	struct lwis_event_control *k_event_controls;
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+	int ret = 0;
+	int i;
+	size_t buf_size;
+
+	if (copy_from_user((void *)&k_msg, (void __user *)u_msg, sizeof(k_msg))) {
+		dev_err(lwis_dev->dev, "Failed to copy ioctl message from user\n");
+		return -EFAULT;
+	}
+
+	/*  Copy event controls from user buffer. */
+	buf_size = sizeof(struct lwis_event_control) * k_msg.list.num_event_controls;
+	if (buf_size / sizeof(struct lwis_event_control) != k_msg.list.num_event_controls) {
+		dev_err(lwis_dev->dev, "Failed to copy event controls due to integer overflow.\n");
+		header->ret_code = -EOVERFLOW;
+		return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+	}
+	k_event_controls = kmalloc(buf_size, GFP_KERNEL);
+	if (!k_event_controls) {
+		dev_err(lwis_dev->dev, "Failed to allocate event controls\n");
+		header->ret_code = -ENOMEM;
+		return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+	}
+	if (copy_from_user(k_event_controls, (void __user *)k_msg.list.event_controls, buf_size)) {
+		dev_err(lwis_dev->dev, "Failed to copy event controls from user\n");
+		ret = -EFAULT;
+		goto exit;
+	}
+
+	for (i = 0; i < k_msg.list.num_event_controls; i++) {
+		ret = lwis_client_event_control_set(lwis_client, &k_event_controls[i]);
+		if (ret) {
+			dev_err(lwis_dev->dev, "Failed to apply event control 0x%llx\n",
+				k_event_controls[i].event_id);
+			goto exit;
+		}
+	}
+exit:
+	kfree(k_event_controls);
+	header->ret_code = ret;
+	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+}
+
 static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 				struct lwis_cmd_pkt __user *user_msg)
 {
@@ -2033,6 +2081,11 @@ static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 			ret = cmd_event_control_get(
 				lwis_client, &header,
 				(struct lwis_cmd_event_control_get __user *)user_msg);
+			break;
+		case LWIS_CMD_ID_EVENT_CONTROL_SET:
+			ret = cmd_event_control_set(
+				lwis_client, &header,
+				(struct lwis_cmd_event_control_set __user *)user_msg);
 			break;
 		default:
 			dev_err_ratelimited(lwis_dev->dev, "Unknown command id\n");
