@@ -1736,6 +1736,55 @@ soft_reset_exit:
 	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
 }
 
+static int cmd_buffer_enroll(struct lwis_client *lwis_client, struct lwis_cmd_pkt *header,
+			     struct lwis_cmd_dma_buffer_enroll __user *u_msg)
+{
+	int ret = 0;
+	struct lwis_cmd_dma_buffer_enroll buf_info;
+	struct lwis_enrolled_buffer *buffer;
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+
+	buffer = kmalloc(sizeof(*buffer), GFP_KERNEL);
+	if (!buffer) {
+		dev_err(lwis_dev->dev, "Failed to allocate lwis_enrolled_buffer struct\n");
+		header->ret_code = -ENOMEM;
+		return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+	}
+
+	if (copy_from_user((void *)&buf_info, (void __user *)u_msg, sizeof(buf_info))) {
+		dev_err(lwis_dev->dev, "Failed to copy %zu bytes from user\n", sizeof(buf_info));
+		ret = -EFAULT;
+		goto error_enroll;
+	}
+
+	buffer->info.fd = buf_info.info.fd;
+	buffer->info.dma_read = buf_info.info.dma_read;
+	buffer->info.dma_write = buf_info.info.dma_write;
+
+	ret = lwis_buffer_enroll(lwis_client, buffer);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Failed to enroll buffer\n");
+		goto error_enroll;
+	}
+
+	buf_info.info.dma_vaddr = buffer->info.dma_vaddr;
+	buf_info.header.cmd_id = header->cmd_id;
+	buf_info.header.next = header->next;
+	buf_info.header.ret_code = ret;
+	ret = cmd_copy_to_user(lwis_dev, u_msg, (void *)&buf_info, sizeof(buf_info));
+	if (ret) {
+		lwis_buffer_disenroll(lwis_client, buffer);
+		goto error_enroll;
+	}
+
+	return ret;
+
+error_enroll:
+	kfree(buffer);
+	header->ret_code = ret;
+	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+}
+
 static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 				struct lwis_cmd_pkt __user *user_msg)
 {
@@ -1774,6 +1823,11 @@ static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 		case LWIS_CMD_ID_DEVICE_RESET:
 			ret = cmd_device_reset(lwis_client, &header,
 					       (struct lwis_cmd_io_entries __user *)user_msg);
+			break;
+		case LWIS_CMD_ID_DMA_BUFFER_ENROLL:
+			ret = cmd_buffer_enroll(
+				lwis_client, &header,
+				(struct lwis_cmd_dma_buffer_enroll __user *)user_msg);
 			break;
 		default:
 			dev_err_ratelimited(lwis_dev->dev, "Unknown command id\n");
