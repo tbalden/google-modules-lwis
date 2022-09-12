@@ -1840,6 +1840,48 @@ static int cmd_buffer_cpu_access(struct lwis_client *lwis_client, struct lwis_cm
 	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
 }
 
+static int cmd_buffer_alloc(struct lwis_client *lwis_client, struct lwis_cmd_pkt *header,
+			    struct lwis_cmd_dma_buffer_alloc __user *u_msg)
+{
+	int ret = 0;
+	struct lwis_cmd_dma_buffer_alloc alloc_info;
+	struct lwis_allocated_buffer *buffer;
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+
+	buffer = kmalloc(sizeof(*buffer), GFP_KERNEL);
+	if (!buffer) {
+		dev_err(lwis_dev->dev, "Failed to allocated lwis_allocated_buffer\n");
+		return -ENOMEM;
+	}
+
+	if (copy_from_user((void *)&alloc_info, (void __user *)u_msg, sizeof(alloc_info))) {
+		dev_err(lwis_dev->dev, "Failed to copy %zu bytes from user\n", sizeof(alloc_info));
+		ret = -EFAULT;
+		goto error_alloc;
+	}
+
+	ret = lwis_buffer_alloc(lwis_client, &alloc_info.info, buffer);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Failed to allocate buffer\n");
+		goto error_alloc;
+	}
+
+	alloc_info.header.ret_code = 0;
+	ret = cmd_copy_to_user(lwis_dev, u_msg, (void *)&alloc_info, sizeof(alloc_info));
+	if (ret) {
+		lwis_buffer_free(lwis_client, buffer);
+		ret = -EFAULT;
+		goto error_alloc;
+	}
+
+	return ret;
+
+error_alloc:
+	kfree(buffer);
+	header->ret_code = ret;
+	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+}
+
 static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 				struct lwis_cmd_pkt __user *user_msg)
 {
@@ -1893,6 +1935,10 @@ static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 			ret = cmd_buffer_cpu_access(
 				lwis_client, &header,
 				(struct lwis_cmd_dma_buffer_cpu_access __user *)user_msg);
+			break;
+		case LWIS_CMD_ID_DMA_BUFFER_ALLOC:
+			ret = cmd_buffer_alloc(lwis_client, &header,
+					       (struct lwis_cmd_dma_buffer_alloc __user *)user_msg);
 			break;
 		default:
 			dev_err_ratelimited(lwis_dev->dev, "Unknown command id\n");
