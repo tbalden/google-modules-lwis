@@ -2098,6 +2098,86 @@ static int cmd_event_dequeue(struct lwis_client *lwis_client, struct lwis_cmd_pk
 	return cmd_copy_to_user(lwis_dev, u_msg, (void *)&info, sizeof(info));
 }
 
+static int cmd_construct_transaction(struct lwis_client *client,
+				     struct lwis_cmd_transaction_info __user *u_msg,
+				     struct lwis_transaction **transaction)
+{
+	int ret;
+	struct lwis_cmd_transaction_info k_info;
+	struct lwis_transaction *k_transaction;
+	struct lwis_device *lwis_dev = client->lwis_dev;
+
+	k_transaction = kmalloc(sizeof(*k_transaction), GFP_KERNEL);
+	if (!k_transaction) {
+		dev_err(lwis_dev->dev, "Failed to allocate transaction info\n");
+		return -ENOMEM;
+	}
+
+	if (copy_from_user((void *)&k_info, (void __user *)u_msg, sizeof(k_info))) {
+		dev_err(lwis_dev->dev, "Failed to copy transaction info from user\n");
+		ret = -EFAULT;
+		goto error_free_transaction;
+	}
+
+	memcpy(&k_transaction->info, &k_info.info, sizeof(k_transaction->info));
+
+	ret = construct_io_entry(client, k_transaction->info.io_entries,
+				 k_transaction->info.num_io_entries,
+				 &k_transaction->info.io_entries);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Failed to prepare lwis io entries for transaction\n");
+		goto error_free_transaction;
+	}
+
+	k_transaction->resp = NULL;
+	k_transaction->is_weak_transaction = false;
+	INIT_LIST_HEAD(&k_transaction->event_list_node);
+	INIT_LIST_HEAD(&k_transaction->process_queue_node);
+	INIT_LIST_HEAD(&k_transaction->completion_fence_list);
+
+	*transaction = k_transaction;
+	return 0;
+
+error_free_transaction:
+	kfree(k_transaction);
+	return ret;
+}
+
+static int cmd_transaction_submit(struct lwis_client *client, struct lwis_cmd_pkt *header,
+				  struct lwis_cmd_transaction_info __user *u_msg)
+{
+	struct lwis_transaction *k_transaction = NULL;
+	struct lwis_cmd_transaction_info k_transaction_info;
+	struct lwis_device *lwis_dev = client->lwis_dev;
+	int ret = 0;
+	unsigned long flags;
+
+	ret = cmd_construct_transaction(client, u_msg, &k_transaction);
+	if (ret) {
+		goto err_exit;
+	}
+
+	spin_lock_irqsave(&client->transaction_lock, flags);
+	ret = lwis_transaction_submit_locked(client, k_transaction);
+	k_transaction_info.info = k_transaction->info;
+	spin_unlock_irqrestore(&client->transaction_lock, flags);
+	if (ret) {
+		k_transaction_info.info.id = LWIS_ID_INVALID;
+		lwis_transaction_free(lwis_dev, k_transaction);
+		goto err_exit;
+	}
+
+	k_transaction_info.header.cmd_id = header->cmd_id;
+	k_transaction_info.header.next = header->next;
+	k_transaction_info.header.ret_code = ret;
+	return cmd_copy_to_user(lwis_dev, u_msg, (void *)&k_transaction_info,
+				sizeof(k_transaction_info));
+
+err_exit:
+	header->ret_code = ret;
+	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+}
+
 static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 				struct lwis_cmd_pkt __user *user_msg)
 {
@@ -2177,6 +2257,11 @@ static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 		case LWIS_CMD_ID_EVENT_DEQUEUE:
 			ret = cmd_event_dequeue(lwis_client, &header,
 						(struct lwis_cmd_event_dequeue __user *)user_msg);
+			break;
+		case LWIS_CMD_ID_TRANSACTION_SUBMIT:
+			ret = cmd_transaction_submit(
+				lwis_client, &header,
+				(struct lwis_cmd_transaction_info __user *)user_msg);
 			break;
 		default:
 			dev_err_ratelimited(lwis_dev->dev, "Unknown command id\n");
