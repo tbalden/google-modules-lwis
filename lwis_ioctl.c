@@ -1939,6 +1939,30 @@ reg_io_exit:
 	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
 }
 
+static int cmd_event_control_get(struct lwis_client *lwis_client, struct lwis_cmd_pkt *header,
+				 struct lwis_cmd_event_control_get __user *u_msg)
+{
+	int ret = 0;
+	struct lwis_cmd_event_control_get control;
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+
+	if (copy_from_user((void *)&control, (void __user *)u_msg, sizeof(control))) {
+		dev_err(lwis_dev->dev, "Failed to copy %zu bytes from user\n", sizeof(control));
+		return -EFAULT;
+	}
+
+	ret = lwis_client_event_control_get(lwis_client, control.ctl.event_id, &control.ctl);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Failed to get event: %lld (err:%d)\n", control.ctl.event_id,
+			ret);
+		header->ret_code = ret;
+		return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+	}
+
+	control.header.ret_code = 0;
+	return cmd_copy_to_user(lwis_dev, u_msg, (void *)&control, sizeof(control));
+}
+
 static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 				struct lwis_cmd_pkt __user *user_msg)
 {
@@ -2004,6 +2028,11 @@ static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 		case LWIS_CMD_ID_REG_IO:
 			ret = cmd_reg_io(lwis_dev, &header,
 					 (struct lwis_cmd_io_entries __user *)user_msg);
+			break;
+		case LWIS_CMD_ID_EVENT_CONTROL_GET:
+			ret = cmd_event_control_get(
+				lwis_client, &header,
+				(struct lwis_cmd_event_control_get __user *)user_msg);
 			break;
 		default:
 			dev_err_ratelimited(lwis_dev->dev, "Unknown command id\n");
