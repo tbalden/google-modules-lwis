@@ -1819,6 +1819,27 @@ static int cmd_buffer_disenroll(struct lwis_client *lwis_client, struct lwis_cmd
 	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
 }
 
+static int cmd_buffer_cpu_access(struct lwis_client *lwis_client, struct lwis_cmd_pkt *header,
+				 struct lwis_cmd_dma_buffer_cpu_access __user *u_msg)
+{
+	int ret = 0;
+	struct lwis_cmd_dma_buffer_cpu_access op;
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+
+	if (copy_from_user((void *)&op, (void __user *)u_msg, sizeof(op))) {
+		dev_err(lwis_dev->dev, "Failed to copy buffer CPU access operation from user\n");
+		return -EFAULT;
+	}
+
+	ret = lwis_buffer_cpu_access(lwis_client, &op.op);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Failed to prepare for cpu access for fd %d\n", op.op.fd);
+	}
+
+	header->ret_code = ret;
+	return cmd_copy_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+}
+
 static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 				struct lwis_cmd_pkt __user *user_msg)
 {
@@ -1867,6 +1888,11 @@ static int ioctl_handle_cmd_pkt(struct lwis_client *lwis_client,
 			ret = cmd_buffer_disenroll(
 				lwis_client, &header,
 				(struct lwis_cmd_dma_buffer_disenroll __user *)user_msg);
+			break;
+		case LWIS_CMD_ID_DMA_BUFFER_CPU_ACCESS:
+			ret = cmd_buffer_cpu_access(
+				lwis_client, &header,
+				(struct lwis_cmd_dma_buffer_cpu_access __user *)user_msg);
 			break;
 		default:
 			dev_err_ratelimited(lwis_dev->dev, "Unknown command id\n");
