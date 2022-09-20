@@ -1117,6 +1117,11 @@ static int ioctl_transaction_submit(struct lwis_client *client,
 		return ret;
 	}
 
+	ret = lwis_initialize_transaction_fences(client, k_transaction);
+	if (ret) {
+		return ret;
+	}
+
 	spin_lock_irqsave(&client->transaction_lock, flags);
 	ret = lwis_transaction_submit_locked(client, k_transaction);
 	k_transaction_info = k_transaction->info;
@@ -1147,6 +1152,11 @@ static int ioctl_transaction_replace(struct lwis_client *client,
 	struct lwis_device *lwis_dev = client->lwis_dev;
 
 	ret = construct_transaction(client, msg, &k_transaction);
+	if (ret) {
+		return ret;
+	}
+
+	ret = lwis_initialize_transaction_fences(client, k_transaction);
 	if (ret) {
 		return ret;
 	}

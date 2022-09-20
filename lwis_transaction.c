@@ -713,10 +713,7 @@ static int prepare_transaction_fences_locked(struct lwis_client *client,
 	}
 
 	/* If transaction contains completion fences, add them to the transaction */
-	ret = lwis_initialize_completion_fences(client, transaction);
-	if (ret) {
-		return ret;
-	}
+	ret = lwis_add_completion_fence(client, transaction);
 
 	return ret;
 }

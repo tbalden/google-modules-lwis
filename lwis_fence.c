@@ -438,7 +438,6 @@ int lwis_parse_trigger_condition(struct lwis_client *client, struct lwis_transac
 	struct lwis_transaction_info *info;
 	struct lwis_device *lwis_dev;
 	int i, ret;
-	int fd_or_err;
 
 	if (!transaction || !client) {
 		dev_err(client->lwis_dev->dev, "Invalid lwis transaction\n");
@@ -456,15 +455,6 @@ int lwis_parse_trigger_condition(struct lwis_client *client, struct lwis_transac
 	}
 
 	for (i = 0; i < info->trigger_condition.num_nodes; i++) {
-		if (info->trigger_condition.trigger_nodes[i].type ==
-		    LWIS_TRIGGER_FENCE_PLACEHOLDER) {
-			fd_or_err = lwis_fence_create(lwis_dev);
-			if (fd_or_err < 0) {
-				return fd_or_err;
-			}
-			info->trigger_condition.trigger_nodes[i].fence_fd = fd_or_err;
-		}
-
 		if (info->trigger_condition.trigger_nodes[i].type == LWIS_TRIGGER_EVENT) {
 			ret = lwis_trigger_event_add_weak_transaction(
 				client, info->id,
@@ -473,9 +463,6 @@ int lwis_parse_trigger_condition(struct lwis_client *client, struct lwis_transac
 			ret = lwis_trigger_fence_add_transaction(
 				info->trigger_condition.trigger_nodes[i].fence_fd, client,
 				transaction);
-			if (ret) {
-				return ret;
-			}
 		}
 		if (ret) {
 			return ret;
@@ -502,13 +489,65 @@ int ioctl_lwis_fence_create(struct lwis_device *lwis_dev, int32_t __user *msg)
 	return 0;
 }
 
-int lwis_add_completion_fence(struct lwis_client *client, struct lwis_transaction *transaction,
-			      int fence_fd)
+int lwis_initialize_transaction_fences(struct lwis_client *client,
+				       struct lwis_transaction *transaction)
+{
+	struct lwis_transaction_info *info = &transaction->info;
+	struct lwis_device *lwis_dev = client->lwis_dev;
+	int i;
+	int fd_or_err;
+
+	if (!transaction || !client) {
+		dev_err(client->lwis_dev->dev, "Invalid lwis transaction\n");
+		return -EINVAL;
+	}
+
+	/* If triggered by trigger_condition */
+	if (lwis_triggered_by_condition(transaction)) {
+		/* Initialize all placeholder fences in the trigger_condition */
+		for (i = 0; i < info->trigger_condition.num_nodes; i++) {
+			if (info->trigger_condition.trigger_nodes[i].type ==
+			    LWIS_TRIGGER_FENCE_PLACEHOLDER) {
+				fd_or_err = lwis_fence_create(lwis_dev);
+				if (fd_or_err < 0) {
+					return fd_or_err;
+				}
+				info->trigger_condition.trigger_nodes[i].fence_fd = fd_or_err;
+			}
+		}
+	}
+
+	/* Initialize completion fence if one is requested */
+	if (info->completion_fence_fd == LWIS_CREATE_COMPLETION_FENCE) {
+		fd_or_err = lwis_fence_create(client->lwis_dev);
+		if (fd_or_err < 0) {
+			return fd_or_err;
+		}
+		info->completion_fence_fd = fd_or_err;
+	}
+
+	return 0;
+}
+
+int lwis_add_completion_fence(struct lwis_client *client, struct lwis_transaction *transaction)
 {
 	struct file *fp;
 	struct lwis_fence *lwis_fence;
 	struct lwis_fence_pending_signal *fence_pending_signal;
 	struct lwis_device *lwis_dev = client->lwis_dev;
+	int fence_fd = transaction->info.completion_fence_fd;
+
+	/* If completion fence is not requested, we can safely return */
+	if (fence_fd == LWIS_NO_COMPLETION_FENCE) {
+		return 0;
+	}
+
+	/* If completion fence is requested but not initialized, we cannot continue */
+	if (fence_fd == LWIS_CREATE_COMPLETION_FENCE) {
+		dev_err(lwis_dev->dev,
+			"Cannot add uninitialized completion fence to transaction\n");
+		return -EPERM;
+	}
 
 	fp = fget(fence_fd);
 	if (fp == NULL) {
@@ -529,31 +568,6 @@ int lwis_add_completion_fence(struct lwis_client *client, struct lwis_transactio
 			 transaction->info.id, lwis_fence->fd);
 	}
 #endif
-	return 0;
-}
-
-int lwis_initialize_completion_fences(struct lwis_client *client,
-				      struct lwis_transaction *transaction)
-{
-	int ret;
-	int fd_or_err;
-	struct lwis_transaction_info *info = &transaction->info;
-
-	if (info->completion_fence_fd == LWIS_CREATE_COMPLETION_FENCE) {
-		fd_or_err = lwis_fence_create(client->lwis_dev);
-		if (fd_or_err < 0) {
-			return fd_or_err;
-		}
-		info->completion_fence_fd = fd_or_err;
-	}
-
-	if (info->completion_fence_fd >= 0) {
-		ret = lwis_add_completion_fence(client, transaction, info->completion_fence_fd);
-		if (ret) {
-			return ret;
-		}
-	}
-
 	return 0;
 }
 

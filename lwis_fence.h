@@ -59,6 +59,11 @@ int ioctl_lwis_fence_create(struct lwis_device *lwis_dev, int32_t __user *msg);
 struct lwis_device *lwis_fence_get(int fd);
 
 #ifdef LWIS_FENCE_ENABLED
+
+/* Creates all fences that do not currently exist */
+int lwis_initialize_transaction_fences(struct lwis_client *client,
+				       struct lwis_transaction *transaction);
+
 bool lwis_triggered_by_condition(struct lwis_transaction *transaction);
 
 bool lwis_event_triggered_condition_ready(struct lwis_transaction *transaction,
@@ -84,14 +89,7 @@ int lwis_fence_signal(struct lwis_fence *lwis_fence, int status);
 /*
  *  lwis_add_completion_fence: Adds the fence with the given fd as a completion fence to this transaction.
  */
-int lwis_add_completion_fence(struct lwis_client *client, struct lwis_transaction *transaction,
-			      int fence_fd);
-
-/*
- *  lwis_initialize_completion_fences: Initializes any completion fences required for this transaction.
- */
-int lwis_initialize_completion_fences(struct lwis_client *client,
-				      struct lwis_transaction *transaction);
+int lwis_add_completion_fence(struct lwis_client *client, struct lwis_transaction *transaction);
 
 /* lwis_fence_pending_signal_create: Creates and returns a lwis_fence_pending_signal list entry */
 struct lwis_fence_pending_signal *lwis_fence_pending_signal_create(struct lwis_fence *fence,
@@ -110,6 +108,13 @@ void lwis_pending_fences_move_all(struct lwis_device *lwis_device,
 				  struct lwis_transaction *transaction,
 				  struct list_head *pending_fences, int error_code);
 #else
+
+static inline int lwis_initialize_transaction_fences(struct lwis_client *client,
+						     struct lwis_transaction *transaction)
+{
+	return 0;
+}
+
 static inline
 bool lwis_triggered_by_condition(struct lwis_transaction *transaction)
 {
@@ -144,13 +149,7 @@ static inline int lwis_fence_signal(struct lwis_fence *lwis_fence, int status)
 }
 
 static inline int lwis_add_completion_fence(struct lwis_client *client,
-					    struct lwis_transaction *transaction, int fence_fd)
-{
-	return 0;
-}
-
-static inline int lwis_initialize_completion_fences(struct lwis_client *client,
-						    struct lwis_transaction *transaction)
+					    struct lwis_transaction *transaction)
 {
 	return 0;
 }
