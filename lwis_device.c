@@ -785,7 +785,7 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 	if (lwis_dev->type == DEVICE_TYPE_I2C) {
 		mutex_lock(i2c_dev->group_i2c_lock);
 	}
-	if (lwis_dev->power_up_seqs_present) {
+	if (lwis_dev->power_up_sequence) {
 		ret = process_power_sequence(lwis_dev, lwis_dev->power_up_sequence,
 					     /*set_active=*/true, /*skip_error=*/false);
 		if (ret) {
@@ -978,7 +978,7 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 	if (lwis_dev->type == DEVICE_TYPE_I2C) {
 		mutex_lock(i2c_dev->group_i2c_lock);
 	}
-	if (lwis_dev->power_down_seqs_present) {
+	if (lwis_dev->power_down_sequence) {
 		ret = process_power_sequence(lwis_dev, lwis_dev->power_down_sequence,
 					     /*set_active=*/false, /*skip_error=*/true);
 		if (ret) {
