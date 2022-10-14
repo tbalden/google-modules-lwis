@@ -992,6 +992,18 @@ int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 		return ret;
 	}
 
+	ret = parse_power_seqs(lwis_dev, "suspend", &lwis_dev->suspend_sequence);
+	if (ret) {
+		pr_err("Error parsing suspend-seqs\n");
+		return ret;
+	}
+
+	ret = parse_power_seqs(lwis_dev, "resume", &lwis_dev->resume_sequence);
+	if (ret) {
+		pr_err("Error parsing resume-seqs\n");
+		return ret;
+	}
+
 	ret = parse_settle_time(lwis_dev);
 	if (ret) {
 		pr_err("Error parsing settle-time\n");

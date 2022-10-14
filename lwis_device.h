@@ -245,6 +245,10 @@ struct lwis_device {
 	struct lwis_device_power_sequence_list *power_up_sequence;
 	/* Power down sequence information */
 	struct lwis_device_power_sequence_list *power_down_sequence;
+	/* Suspend sequence information */
+	struct lwis_device_power_sequence_list *suspend_sequence;
+	/* Resume sequence information */
+	struct lwis_device_power_sequence_list *resume_sequence;
 	/* GPIOs list */
 	struct lwis_gpios_list *gpios_list;
 	/* GPIO interrupts list */
