@@ -23,6 +23,7 @@
 #include "lwis_device_i2c.h"
 #include "lwis_device_ioreg.h"
 #include "lwis_event.h"
+#include "lwis_fence.h"
 #include "lwis_i2c.h"
 #include "lwis_io_entry.h"
 #include "lwis_ioctl.h"
@@ -848,8 +849,10 @@ static int construct_transaction_from_cmd(struct lwis_client *client,
 	}
 
 	k_transaction->resp = NULL;
+	k_transaction->is_weak_transaction = false;
 	INIT_LIST_HEAD(&k_transaction->event_list_node);
 	INIT_LIST_HEAD(&k_transaction->process_queue_node);
+	INIT_LIST_HEAD(&k_transaction->completion_fence_list);
 
 	*transaction = k_transaction;
 	return 0;
@@ -877,6 +880,11 @@ static int cmd_transaction_submit(struct lwis_client *client, struct lwis_cmd_pk
 	ret = construct_transaction_from_cmd(client, u_msg, &k_transaction);
 	if (ret) {
 		goto err_exit;
+	}
+
+	ret = lwis_initialize_transaction_fences(client, k_transaction);
+	if (ret) {
+		return ret;
 	}
 
 	spin_lock_irqsave(&client->transaction_lock, flags);
@@ -933,6 +941,11 @@ static int cmd_transaction_replace(struct lwis_client *client, struct lwis_cmd_p
 	ret = construct_transaction_from_cmd(client, u_msg, &k_transaction);
 	if (ret) {
 		goto err_exit;
+	}
+
+	ret = lwis_initialize_transaction_fences(client, k_transaction);
+	if (ret) {
+		return ret;
 	}
 
 	spin_lock_irqsave(&client->transaction_lock, flags);
