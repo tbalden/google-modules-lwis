@@ -39,7 +39,7 @@ static struct lwis_event_subscribe_operations dpm_subscribe_ops = {
 };
 
 #ifdef LWIS_BTS_BLOCK_NAME_ENABLED
-static find_bts_block(struct lwis_device *lwis_dev, struct lwis_device *target_dev,
+static int find_bts_block(struct lwis_device *lwis_dev, struct lwis_device *target_dev,
 			struct lwis_qos_setting *qos_setting)
 {
 	int i;
