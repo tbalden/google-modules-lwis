@@ -194,6 +194,8 @@ struct lwis_device {
 
 	/* Enabled state of the device */
 	int enabled;
+	/* Mark if the client called device suspend */
+	bool is_suspended;
 	/* Mutex used to synchronize access between clients */
 	struct mutex client_lock;
 	/* Spinlock used to synchronize access to the device struct */
@@ -363,6 +365,13 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev);
  * lwis_dev->client_lock should be held before this function.
  */
 int lwis_dev_power_down_locked(struct lwis_device *lwis_dev);
+
+/*
+ * Process lwis device power sequence list
+ */
+int lwis_dev_process_power_sequence(struct lwis_device *lwis_dev,
+				    struct lwis_device_power_sequence_list *list, bool set_active,
+				    bool skip_error);
 
 /*
  *  lwis_dev_power_seq_list_alloc:

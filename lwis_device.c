@@ -238,6 +238,7 @@ static int lwis_release(struct inode *node, struct file *fp)
 		if (lwis_dev->enabled == 0) {
 			dev_info(lwis_dev->dev, "No more client, power down\n");
 			rc = lwis_dev_power_down_locked(lwis_dev);
+			lwis_dev->is_suspended = false;
 		}
 	}
 
@@ -372,9 +373,9 @@ static void lwis_assign_top_to_other(struct lwis_device *top_dev)
 	mutex_unlock(&core.lock);
 }
 
-static int process_power_sequence(struct lwis_device *lwis_dev,
-				  struct lwis_device_power_sequence_list *list, bool set_active,
-				  bool skip_error)
+int lwis_dev_process_power_sequence(struct lwis_device *lwis_dev,
+				    struct lwis_device_power_sequence_list *list, bool set_active,
+				    bool skip_error)
 {
 	int ret = 0;
 	int last_error = 0;
@@ -786,10 +787,10 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 		mutex_lock(i2c_dev->group_i2c_lock);
 	}
 	if (lwis_dev->power_up_sequence) {
-		ret = process_power_sequence(lwis_dev, lwis_dev->power_up_sequence,
-					     /*set_active=*/true, /*skip_error=*/false);
+		ret = lwis_dev_process_power_sequence(lwis_dev, lwis_dev->power_up_sequence,
+						      /*set_active=*/true, /*skip_error=*/false);
 		if (ret) {
-			dev_err(lwis_dev->dev, "Error process_power_sequence (%d)\n", ret);
+			dev_err(lwis_dev->dev, "Error lwis_dev_process_power_sequence (%d)\n", ret);
 			if (lwis_dev->type == DEVICE_TYPE_I2C) {
 				mutex_unlock(i2c_dev->group_i2c_lock);
 			}
@@ -979,10 +980,10 @@ int lwis_dev_power_down_locked(struct lwis_device *lwis_dev)
 		mutex_lock(i2c_dev->group_i2c_lock);
 	}
 	if (lwis_dev->power_down_sequence) {
-		ret = process_power_sequence(lwis_dev, lwis_dev->power_down_sequence,
-					     /*set_active=*/false, /*skip_error=*/true);
+		ret = lwis_dev_process_power_sequence(lwis_dev, lwis_dev->power_down_sequence,
+						      /*set_active=*/false, /*skip_error=*/true);
 		if (ret) {
-			dev_err(lwis_dev->dev, "Error process_power_sequence (%d)\n", ret);
+			dev_err(lwis_dev->dev, "Error lwis_dev_process_power_sequence (%d)\n", ret);
 			last_error = ret;
 		}
 	} else {
@@ -1178,6 +1179,7 @@ int lwis_base_probe(struct lwis_device *lwis_dev, struct platform_device *plat_d
 
 	/* Initialize enabled state */
 	lwis_dev->enabled = 0;
+	lwis_dev->is_suspended = false;
 	lwis_dev->clock_family = CLOCK_FAMILY_INVALID;
 
 	/* Initialize client mutex */
