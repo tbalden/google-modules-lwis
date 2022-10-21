@@ -416,6 +416,44 @@ exit_locked:
 	return copy_pkt_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
 }
 
+static int cmd_device_resume(struct lwis_client *lwis_client, struct lwis_cmd_pkt *header,
+			     struct lwis_cmd_pkt __user *u_msg)
+{
+	int ret = 0;
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+
+	if (!lwis_dev->resume_sequence) {
+		dev_err(lwis_dev->dev, "No resume sequence defined\n");
+		header->ret_code = -EINVAL;
+		return copy_pkt_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+	}
+
+	if (!lwis_dev->is_suspended) {
+		header->ret_code = 0;
+		return copy_pkt_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+	}
+
+	mutex_lock(&lwis_dev->client_lock);
+	/* Clear event queues to make sure there is no stale event from
+	 * previous session */
+	lwis_client_event_queue_clear(lwis_client);
+	lwis_client_error_event_queue_clear(lwis_client);
+
+	ret = lwis_dev_process_power_sequence(lwis_dev, lwis_dev->resume_sequence,
+					      /*set_active=*/true, /*skip_error=*/false);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Error lwis_dev_process_power_sequence (%d)\n", ret);
+		goto exit_locked;
+	}
+
+	lwis_dev->is_suspended = false;
+	dev_info(lwis_dev->dev, "Device resumed\n");
+exit_locked:
+	mutex_unlock(&lwis_dev->client_lock);
+	header->ret_code = ret;
+	return copy_pkt_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+}
+
 static int cmd_dma_buffer_enroll(struct lwis_client *lwis_client, struct lwis_cmd_pkt *header,
 				 struct lwis_cmd_dma_buffer_enroll __user *u_msg)
 {
@@ -1186,6 +1224,10 @@ int lwis_ioctl_handle_cmd_pkt(struct lwis_client *lwis_client, struct lwis_cmd_p
 		case LWIS_CMD_ID_DEVICE_SUSPEND:
 			ret = cmd_device_suspend(lwis_client, &header,
 						 (struct lwis_cmd_pkt __user *)user_msg);
+			break;
+		case LWIS_CMD_ID_DEVICE_RESUME:
+			ret = cmd_device_resume(lwis_client, &header,
+						(struct lwis_cmd_pkt __user *)user_msg);
 			break;
 		case LWIS_CMD_ID_DMA_BUFFER_ENROLL:
 			ret = cmd_dma_buffer_enroll(
