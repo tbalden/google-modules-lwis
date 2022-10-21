@@ -77,7 +77,7 @@ static int parse_irq_gpios(struct lwis_device *lwis_dev)
 	int i;
 
 	/* Initialize the data structure */
-	strlcpy(lwis_dev->irq_gpios_info.name, "irq", LWIS_MAX_NAME_STRING_LEN);
+	strscpy(lwis_dev->irq_gpios_info.name, "irq", LWIS_MAX_NAME_STRING_LEN);
 	lwis_dev->irq_gpios_info.gpios = NULL;
 	lwis_dev->irq_gpios_info.irq_list = NULL;
 	lwis_dev->irq_gpios_info.is_shared = false;
@@ -118,7 +118,7 @@ static int parse_irq_gpios(struct lwis_device *lwis_dev)
 			pr_err("Error get GPIO irq name list (%d)\n", ret);
 			goto error_parse_irq_gpios;
 		}
-		strlcpy(irq_gpios_names + i * LWIS_MAX_NAME_STRING_LEN, name,
+		strscpy(irq_gpios_names + i * LWIS_MAX_NAME_STRING_LEN, name,
 			LWIS_MAX_NAME_STRING_LEN);
 	}
 
@@ -808,7 +808,7 @@ static int parse_power_seqs(struct lwis_device *lwis_dev, const char *seq_name,
 
 			gpios_info->gpios = NULL;
 			gpios_info->irq_list = NULL;
-			strlcpy(gpios_info->name, seq_item_name, LWIS_MAX_NAME_STRING_LEN);
+			strscpy(gpios_info->name, seq_item_name, LWIS_MAX_NAME_STRING_LEN);
 
 			if (strncmp(SHARED_STRING, seq_item_name, strlen(SHARED_STRING)) == 0) {
 				gpios_info->is_shared = true;
@@ -952,7 +952,7 @@ int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 		pr_err("Error parsing node name\n");
 		return -EINVAL;
 	}
-	strlcpy(lwis_dev->name, name_str, LWIS_MAX_NAME_STRING_LEN);
+	strscpy(lwis_dev->name, name_str, LWIS_MAX_NAME_STRING_LEN);
 
 	pr_debug("Device tree entry [%s] - begin\n", lwis_dev->name);
 

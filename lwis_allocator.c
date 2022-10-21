@@ -178,14 +178,14 @@ int lwis_allocator_init(struct lwis_device *lwis_dev)
 	hash_init(block_mgr->allocated_blocks);
 
 	/* Initialize block pools */
-	strlcpy(block_mgr->pool_8k.name, "lwis-block-8k", LWIS_MAX_NAME_STRING_LEN);
-	strlcpy(block_mgr->pool_16k.name, "lwis-block-16k", LWIS_MAX_NAME_STRING_LEN);
-	strlcpy(block_mgr->pool_32k.name, "lwis-block-32k", LWIS_MAX_NAME_STRING_LEN);
-	strlcpy(block_mgr->pool_64k.name, "lwis-block-64k", LWIS_MAX_NAME_STRING_LEN);
-	strlcpy(block_mgr->pool_128k.name, "lwis-block-128k", LWIS_MAX_NAME_STRING_LEN);
-	strlcpy(block_mgr->pool_256k.name, "lwis-block-256k", LWIS_MAX_NAME_STRING_LEN);
-	strlcpy(block_mgr->pool_512k.name, "lwis-block-512k", LWIS_MAX_NAME_STRING_LEN);
-	strlcpy(block_mgr->pool_large.name, "lwis-block-large", LWIS_MAX_NAME_STRING_LEN);
+	strscpy(block_mgr->pool_8k.name, "lwis-block-8k", LWIS_MAX_NAME_STRING_LEN);
+	strscpy(block_mgr->pool_16k.name, "lwis-block-16k", LWIS_MAX_NAME_STRING_LEN);
+	strscpy(block_mgr->pool_32k.name, "lwis-block-32k", LWIS_MAX_NAME_STRING_LEN);
+	strscpy(block_mgr->pool_64k.name, "lwis-block-64k", LWIS_MAX_NAME_STRING_LEN);
+	strscpy(block_mgr->pool_128k.name, "lwis-block-128k", LWIS_MAX_NAME_STRING_LEN);
+	strscpy(block_mgr->pool_256k.name, "lwis-block-256k", LWIS_MAX_NAME_STRING_LEN);
+	strscpy(block_mgr->pool_512k.name, "lwis-block-512k", LWIS_MAX_NAME_STRING_LEN);
+	strscpy(block_mgr->pool_large.name, "lwis-block-large", LWIS_MAX_NAME_STRING_LEN);
 
 	/* Initialize reference count */
 	block_mgr->ref_count = 1;
