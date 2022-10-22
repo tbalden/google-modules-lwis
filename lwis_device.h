@@ -271,6 +271,8 @@ struct lwis_device {
 	struct task_struct *transaction_worker_thread;
 	struct kthread_worker periodic_io_worker;
 	struct task_struct *periodic_io_worker_thread;
+	struct kthread_worker subscribe_worker;
+	struct task_struct *subscribe_worker_thread;
 };
 
 /*
