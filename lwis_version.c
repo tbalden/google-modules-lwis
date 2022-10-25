@@ -40,5 +40,13 @@ void lwis_get_feature_flags(char *buffer, size_t buffer_size)
 	 */
 	strlcat(buffer, " cmd-pkt", buffer_size);
 
+#ifdef LWIS_FENCE_ENABLED
+	/*
+	 * fence:
+	 * Support fence feature
+	 */
+	strlcat(buffer, " fence", buffer_size);
+#endif
+
 	strlcat(buffer, "\n", buffer_size);
 }
