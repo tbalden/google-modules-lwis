@@ -194,6 +194,7 @@ static int cmd_device_enable(struct lwis_client *lwis_client, struct lwis_cmd_pk
 
 	lwis_dev->enabled++;
 	lwis_client->is_enabled = true;
+	lwis_dev->is_suspended = false;
 	dev_info(lwis_dev->dev, "Device enabled\n");
 exit_locked:
 	mutex_unlock(&lwis_dev->client_lock);
@@ -253,6 +254,7 @@ static int cmd_device_disable(struct lwis_client *lwis_client, struct lwis_cmd_p
 
 	lwis_dev->enabled--;
 	lwis_client->is_enabled = false;
+	lwis_dev->is_suspended = false;
 	dev_info(lwis_dev->dev, "Device disabled\n");
 exit_locked:
 	mutex_unlock(&lwis_dev->client_lock);
@@ -350,6 +352,105 @@ soft_reset_exit:
 	if (k_entries) {
 		lwis_allocator_free(lwis_dev, k_entries);
 	}
+	header->ret_code = ret;
+	return copy_pkt_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+}
+
+static int cmd_device_suspend(struct lwis_client *lwis_client, struct lwis_cmd_pkt *header,
+			      struct lwis_cmd_pkt __user *u_msg)
+{
+	int ret = 0;
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+
+	if (!lwis_dev->suspend_sequence) {
+		dev_err(lwis_dev->dev, "No suspend sequence defined\n");
+		header->ret_code = -EINVAL;
+		return copy_pkt_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+	}
+
+	if (!lwis_client->is_enabled) {
+		dev_err(lwis_dev->dev, "Trying to suspend a disabled device\n");
+		header->ret_code = -EINVAL;
+		return copy_pkt_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+	}
+
+	if (lwis_dev->is_suspended) {
+		header->ret_code = 0;
+		return copy_pkt_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+	}
+
+	mutex_lock(&lwis_dev->client_lock);
+	/* Clear event states for this client */
+	lwis_client_event_states_clear(lwis_client);
+	mutex_unlock(&lwis_dev->client_lock);
+
+	/* Flush all periodic io to complete */
+	ret = lwis_periodic_io_client_flush(lwis_client);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Failed to wait for in-process periodic io to complete\n");
+	}
+
+	/* Flush all pending transactions */
+	ret = lwis_transaction_client_flush(lwis_client);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Failed to flush pending transactions\n");
+	}
+
+	/* Run cleanup transactions. */
+	lwis_transaction_client_cleanup(lwis_client);
+
+	mutex_lock(&lwis_dev->client_lock);
+	ret = lwis_dev_process_power_sequence(lwis_dev, lwis_dev->suspend_sequence,
+					      /*set_active=*/false, /*skip_error=*/false);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Error lwis_dev_process_power_sequence (%d)\n", ret);
+		goto exit_locked;
+	}
+
+	lwis_device_event_states_clear_locked(lwis_dev);
+
+	lwis_dev->is_suspended = true;
+	dev_info(lwis_dev->dev, "Device suspended\n");
+exit_locked:
+	mutex_unlock(&lwis_dev->client_lock);
+	header->ret_code = ret;
+	return copy_pkt_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+}
+
+static int cmd_device_resume(struct lwis_client *lwis_client, struct lwis_cmd_pkt *header,
+			     struct lwis_cmd_pkt __user *u_msg)
+{
+	int ret = 0;
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+
+	if (!lwis_dev->resume_sequence) {
+		dev_err(lwis_dev->dev, "No resume sequence defined\n");
+		header->ret_code = -EINVAL;
+		return copy_pkt_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+	}
+
+	if (!lwis_dev->is_suspended) {
+		header->ret_code = 0;
+		return copy_pkt_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+	}
+
+	mutex_lock(&lwis_dev->client_lock);
+	/* Clear event queues to make sure there is no stale event from
+	 * previous session */
+	lwis_client_event_queue_clear(lwis_client);
+	lwis_client_error_event_queue_clear(lwis_client);
+
+	ret = lwis_dev_process_power_sequence(lwis_dev, lwis_dev->resume_sequence,
+					      /*set_active=*/true, /*skip_error=*/false);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Error lwis_dev_process_power_sequence (%d)\n", ret);
+		goto exit_locked;
+	}
+
+	lwis_dev->is_suspended = false;
+	dev_info(lwis_dev->dev, "Device resumed\n");
+exit_locked:
+	mutex_unlock(&lwis_dev->client_lock);
 	header->ret_code = ret;
 	return copy_pkt_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
 }
@@ -1132,6 +1233,14 @@ int lwis_ioctl_handle_cmd_pkt(struct lwis_client *lwis_client, struct lwis_cmd_p
 		case LWIS_CMD_ID_DEVICE_RESET:
 			ret = cmd_device_reset(lwis_client, &header,
 					       (struct lwis_cmd_io_entries __user *)user_msg);
+			break;
+		case LWIS_CMD_ID_DEVICE_SUSPEND:
+			ret = cmd_device_suspend(lwis_client, &header,
+						 (struct lwis_cmd_pkt __user *)user_msg);
+			break;
+		case LWIS_CMD_ID_DEVICE_RESUME:
+			ret = cmd_device_resume(lwis_client, &header,
+						(struct lwis_cmd_pkt __user *)user_msg);
 			break;
 		case LWIS_CMD_ID_DMA_BUFFER_ENROLL:
 			ret = cmd_dma_buffer_enroll(

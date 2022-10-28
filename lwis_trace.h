@@ -22,7 +22,7 @@
 #define LWIS_DEVICE_NAME_ENTRY \
 	__array(char, lwis_name, LWIS_MAX_NAME_STRING_LEN)
 #define LWIS_DEVICE_NAME_ASSIGN \
-	strlcpy(__entry->lwis_name, lwis_dev->name, LWIS_MAX_NAME_STRING_LEN)
+	strscpy(__entry->lwis_name, lwis_dev->name, LWIS_MAX_NAME_STRING_LEN)
 #define LWIS_DEVICE_NAME __entry->lwis_name
 
 TRACE_EVENT(tracing_mark_write,

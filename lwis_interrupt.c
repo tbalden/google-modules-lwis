@@ -104,7 +104,7 @@ int lwis_interrupt_get(struct lwis_interrupt_list *list, int index, char *name,
 	/* Initialize the spinlock */
 	spin_lock_init(&list->irq[index].lock);
 	list->irq[index].irq = irq;
-	strlcpy(list->irq[index].name, name, IRQ_FULL_NAME_LENGTH);
+	strscpy(list->irq[index].name, name, IRQ_FULL_NAME_LENGTH);
 	snprintf(list->irq[index].full_name, IRQ_FULL_NAME_LENGTH, "lwis-%s:%s",
 		 list->lwis_dev->name, name);
 	list->irq[index].has_events = false;
@@ -137,7 +137,7 @@ int lwis_interrupt_get_gpio_irq(struct lwis_interrupt_list *list, int index, cha
 	/* Initialize the spinlock */
 	spin_lock_init(&list->irq[index].lock);
 	list->irq[index].irq = gpio_irq;
-	strlcpy(list->irq[index].name, name, IRQ_FULL_NAME_LENGTH);
+	strscpy(list->irq[index].name, name, IRQ_FULL_NAME_LENGTH);
 	snprintf(list->irq[index].full_name, IRQ_FULL_NAME_LENGTH, "lwis-%s:%s",
 		 list->lwis_dev->name, name);
 	list->irq[index].has_events = false;
@@ -310,7 +310,7 @@ static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 						    event->event_id &&
 					    event_state->event_control.flags &
 						    LWIS_EVENT_CONTROL_FLAG_IRQ_ENABLE_ONCE) {
-						dev_err(irq->lwis_dev->dev,
+						dev_err_ratelimited(irq->lwis_dev->dev,
 							"IRQ(%s) event(0x%llx) enabled once\n",
 							irq->name, event->event_id);
 						lwis_interrupt_set_mask(irq, event->int_reg_bit,
