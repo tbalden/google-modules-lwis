@@ -85,30 +85,37 @@ void lwis_interrupt_list_free(struct lwis_interrupt_list *list)
 	kfree(list->irq);
 }
 
-int lwis_interrupt_get(struct lwis_interrupt_list *list, int index, char *name,
-		       struct platform_device *plat_dev)
+int lwis_interrupt_init(struct lwis_interrupt_list *list, int index, char *name)
 {
-	int irq;
-	int ret = 0;
-
 	if (!list || index < 0 || index >= list->count) {
-		return -EINVAL;
-	}
-
-	irq = platform_get_irq(plat_dev, index);
-	if (irq <= 0) {
-		pr_err("Error retriving interrupt %s at %d\n", name, index);
 		return -EINVAL;
 	}
 
 	/* Initialize the spinlock */
 	spin_lock_init(&list->irq[index].lock);
-	list->irq[index].irq = irq;
 	strscpy(list->irq[index].name, name, IRQ_FULL_NAME_LENGTH);
 	snprintf(list->irq[index].full_name, IRQ_FULL_NAME_LENGTH, "lwis-%s:%s",
 		 list->lwis_dev->name, name);
 	list->irq[index].has_events = false;
 	list->irq[index].lwis_dev = list->lwis_dev;
+	return 0;
+}
+
+int lwis_interrupt_get(struct lwis_interrupt_list *list, int index,
+		       struct platform_device *plat_dev)
+{
+	int irq;
+	int ret = 0;
+	unsigned long flags;
+
+	irq = platform_get_irq(plat_dev, index);
+	if (irq <= 0) {
+		pr_err("Error retrieving interrupt %s at %d\n", list->irq[index].full_name, index);
+		return -EINVAL;
+	}
+
+	spin_lock_irqsave(&list->irq[index].lock, flags);
+	list->irq[index].irq = irq;
 
 	ret = request_irq(irq, lwis_interrupt_event_isr, IRQF_SHARED, list->irq[index].full_name,
 			  &list->irq[index]);
@@ -121,6 +128,7 @@ int lwis_interrupt_get(struct lwis_interrupt_list *list, int index, char *name,
 		dev_warn(list->lwis_dev->dev, "Interrupt %s cannot set affinity.\n",
 			 list->irq[index].full_name);
 	}
+	spin_unlock_irqrestore(&list->irq[index].lock, flags);
 
 	return 0;
 }
@@ -371,23 +379,13 @@ static irqreturn_t lwis_interrupt_gpios_event_isr(int irq_number, void *data)
 	return IRQ_HANDLED;
 }
 
-int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index,
-				  const char *irq_reg_space, int irq_reg_bid, int64_t *irq_events,
-				  size_t irq_events_num, uint32_t *int_reg_bits,
-				  size_t int_reg_bits_num, int64_t irq_src_reg,
-				  int64_t irq_reset_reg, int64_t irq_mask_reg,
-				  int64_t irq_overflow_reg, bool mask_toggled,
-				  int irq_reg_access_size, int64_t *critical_events,
-				  size_t critical_events_num)
+void lwis_interrupt_set_basic_info(struct lwis_interrupt_list *list, int index,
+				   const char *irq_reg_space, int irq_reg_bid, int64_t irq_src_reg,
+				   int64_t irq_reset_reg, int64_t irq_mask_reg,
+				   int64_t irq_overflow_reg, bool mask_toggled,
+				   int irq_reg_access_size)
 {
-	int i, j;
 	unsigned long flags;
-	bool is_critical = false;
-
-	if (int_reg_bits_num != irq_events_num) {
-		pr_err("reg bits num != irq event num.\n");
-		return -EINVAL;
-	}
 
 	/* Protect the structure */
 	spin_lock_irqsave(&list->irq[index].lock, flags);
@@ -404,6 +402,21 @@ int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index,
 	/* Initialize an empty list for enabled events */
 	INIT_LIST_HEAD(&list->irq[index].enabled_event_infos);
 	spin_unlock_irqrestore(&list->irq[index].lock, flags);
+}
+
+int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index, int64_t *irq_events,
+				  size_t irq_events_num, uint32_t *int_reg_bits,
+				  size_t int_reg_bits_num, int64_t *critical_events,
+				  size_t critical_events_num)
+{
+	int i, j;
+	unsigned long flags;
+	bool is_critical = false;
+
+	if (int_reg_bits_num != irq_events_num) {
+		pr_err("reg bits num != irq event num.\n");
+		return -EINVAL;
+	}
 
 	/* Build the hash table of events we can emit */
 	for (i = 0; i < irq_events_num; i++) {
