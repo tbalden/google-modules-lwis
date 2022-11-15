@@ -383,7 +383,7 @@ void lwis_interrupt_set_basic_info(struct lwis_interrupt_list *list, int index,
 				   const char *irq_reg_space, int irq_reg_bid, int64_t irq_src_reg,
 				   int64_t irq_reset_reg, int64_t irq_mask_reg,
 				   int64_t irq_overflow_reg, bool mask_toggled,
-				   int irq_reg_access_size)
+				   int irq_reg_access_size, int32_t irq_type)
 {
 	unsigned long flags;
 
@@ -397,6 +397,7 @@ void lwis_interrupt_set_basic_info(struct lwis_interrupt_list *list, int index,
 	list->irq[index].irq_overflow_reg = irq_overflow_reg;
 	list->irq[index].mask_toggled = mask_toggled;
 	list->irq[index].irq_reg_access_size = irq_reg_access_size;
+	list->irq[index].irq_type = irq_type;
 	/* Empty hash table for event infos */
 	hash_init(list->irq[index].event_infos);
 	/* Initialize an empty list for enabled events */

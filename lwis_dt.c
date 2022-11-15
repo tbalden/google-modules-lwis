@@ -483,6 +483,13 @@ event_info_exit:
 	return ret;
 }
 
+static int parse_interrupt_leaf_nodes(struct lwis_interrupt_list *list, int index,
+				      struct device_node *leaf_info)
+{
+	/* TODO(bian): implement parse_interrupt_leaf_nodes */
+	return 0;
+}
+
 static int parse_interrupts(struct lwis_device *lwis_dev)
 {
 	int i;
@@ -529,7 +536,7 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 	/* Get event infos */
 	i = 0;
 	of_for_each_phandle (&it, ret, dev_node, "interrupt-event-infos", 0, 0) {
-		const char *irq_reg_space = NULL;
+		const char *irq_reg_space = NULL, *irq_type_str = NULL;
 		bool irq_mask_reg_toggle;
 		u64 irq_src_reg;
 		u64 irq_reset_reg;
@@ -539,6 +546,7 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 		int irq_reg_bid_count;
 		/* To match default value of reg-addr/value-bitwidth. */
 		u32 irq_reg_bitwidth = 32;
+		int32_t irq_type = REGULAR_INTERRUPT;
 		int j;
 		struct device_node *event_info = of_node_get(it.node);
 
@@ -595,21 +603,54 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 
 		of_property_read_u32(event_info, "irq-reg-bitwidth", &irq_reg_bitwidth);
 
+		ret = of_property_read_string(event_info, "irq-type", &irq_type_str);
+		if (ret && ret != -EINVAL) {
+			pr_err("Error getting irq-type from dt: %d\n", ret);
+			return ret;
+		} else if (ret && ret == -EINVAL) {
+			/* The property does not exist, which means regular*/
+			irq_type = REGULAR_INTERRUPT;
+		} else {
+			if (strcmp(irq_type_str, "regular") == 0) {
+				irq_type = REGULAR_INTERRUPT;
+			} else if (strcmp(irq_type_str, "aggregate") == 0) {
+				irq_type = AGGREGATE_INTERRUPT;
+			} else if (strcmp(irq_type_str, "leaf") == 0) {
+				irq_type = LEAF_INTERRUPT;
+			} else {
+				pr_err("Invalid irq-type from dt: %s\n", irq_type_str);
+				return ret;
+			}
+		}
+
 		lwis_interrupt_set_basic_info(lwis_dev->irqs, i, irq_reg_space, irq_reg_bid,
 					      irq_src_reg, irq_reset_reg, irq_mask_reg,
 					      irq_overflow_reg, irq_mask_reg_toggle,
-					      irq_reg_bitwidth);
+					      irq_reg_bitwidth, irq_type);
 
-		ret = lwis_interrupt_get(lwis_dev->irqs, i, plat_dev);
-		if (ret) {
-			pr_err("Cannot set irq %s\n", name);
-			goto error_event_infos;
+		/* Register IRQ handler only for aggregate and regular interrupts */
+		if (irq_type == AGGREGATE_INTERRUPT || irq_type == REGULAR_INTERRUPT) {
+			ret = lwis_interrupt_get(lwis_dev->irqs, i, plat_dev);
+			if (ret) {
+				pr_err("Cannot set irq %s\n", name);
+				goto error_event_infos;
+			}
 		}
 
+		/* Parse event info */
 		ret = parse_interrupts_event_info(lwis_dev->irqs, i, event_info);
 		if (ret) {
 			pr_err("Cannot set event info %s\n", name);
 			goto error_event_infos;
+		}
+
+		/* Parse leaf nodes if it's an aggregate interrupt */
+		if (irq_type == AGGREGATE_INTERRUPT) {
+			ret = parse_interrupt_leaf_nodes(lwis_dev->irqs, i, event_info);
+			if (ret) {
+				pr_err("Error setting leaf nodes for interrupt %d %d\n", i, ret);
+				goto error_event_infos;
+			}
 		}
 
 		of_node_put(event_info);
