@@ -248,6 +248,7 @@ struct lwis_echo {
 #define LWIS_TRANSACTION_FAILURE_EVENT_FLAG (1ULL << 62)
 #define LWIS_HW_IRQ_EVENT_FLAG (1ULL << 61)
 #define LWIS_PERIODIC_IO_EVENT_FLAG (1ULL << 60)
+#define LWIS_OVERFLOW_IRQ_EVENT_FLAG (1ULL << 59)
 
 // Status code for unsignaled LWIS fence
 #define LWIS_FENCE_STATUS_NOT_SIGNALED -1

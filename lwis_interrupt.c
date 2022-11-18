@@ -299,9 +299,13 @@ static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 
 		/* Check if this event needs to be emitted */
 		if ((source_value >> event->int_reg_bit) & 0x1) {
-			/* Emit the event */
-			lwis_device_event_emit(irq->lwis_dev, event->event_id,
-					       NULL, 0);
+			int64_t event_id;
+			/* Check if this overflow event needs to combine event id + overflow flag */
+			event_id = ((overflow_value >> event->int_reg_bit) & 0x1) ?
+					   (event->event_id | LWIS_OVERFLOW_IRQ_EVENT_FLAG) :
+					   event->event_id;
+			lwis_device_event_emit(irq->lwis_dev, event_id, NULL, 0);
+
 			/* Clear this interrupt */
 			reset_value |= (1ULL << event->int_reg_bit);
 
