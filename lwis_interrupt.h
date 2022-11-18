@@ -22,6 +22,17 @@
 
 enum lwis_interrupt_types { REGULAR_INTERRUPT, AGGREGATE_INTERRUPT, LEAF_INTERRUPT };
 
+/*
+ *  struct lwis_interrupt_leaf_node
+ *  This is to represent aggregate interrupt's leaf node
+ */
+struct lwis_interrupt_leaf_node {
+	uint32_t int_reg_bit;
+	int count;
+	int32_t *leaf_irq_indexes;
+	struct list_head node;
+};
+
 struct lwis_interrupt {
 	int irq;
 	/* IRQ name */
@@ -60,6 +71,9 @@ struct lwis_interrupt {
 	struct list_head enabled_event_infos;
 	/* Select the interrupt line behavior */
 	int irq_gpios_types;
+	/* List of aggregate interrupt leaf nodes */
+	/* GUARDED_BY(lock) */
+	struct list_head leaf_nodes;
 };
 
 /*
@@ -79,6 +93,11 @@ struct lwis_interrupt_list {
  *  specified.
  */
 struct lwis_interrupt_list *lwis_interrupt_list_alloc(struct lwis_device *lwis_dev, int count);
+
+/*
+ *  lwis_interrupt_free_leaves: Deallocate the leaf_nodes in lwis_interrupt structure.
+ */
+void lwis_interrupt_free_leaves(struct lwis_interrupt *irq);
 
 /*
  *  lwis_interrupt_list_free: Deallocate the lwis_interrupt_list structure.
@@ -126,6 +145,14 @@ int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index, i
 				  size_t irq_events_num, uint32_t *int_reg_bits,
 				  size_t int_reg_bits_num, int64_t *critical_events,
 				  size_t critical_events_num);
+
+/*
+ * lwis_interrupt_add_leaf: Provides one leaf node information for the aggregate interrupt
+ *
+ * Returns: 0 on success
+ */
+int lwis_interrupt_add_leaf(struct lwis_interrupt_list *list, int index, uint32_t int_reg_bit,
+			    int count, int32_t *leaf_indexes);
 
 /*
  * lwis_interrupt_set_gpios_event_info: Provides event-info structure for a given
