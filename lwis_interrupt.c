@@ -67,6 +67,24 @@ struct lwis_interrupt_list *lwis_interrupt_list_alloc(struct lwis_device *lwis_d
 	return list;
 }
 
+void lwis_interrupt_free_leaves(struct lwis_interrupt *irq)
+{
+	struct lwis_interrupt_leaf_node *leaf_node;
+	struct list_head *it_leaf, *it_tmp;
+
+	if (!irq || irq->irq_type != AGGREGATE_INTERRUPT || list_empty(&irq->leaf_nodes)) {
+		// Nothing to clean
+		return;
+	}
+
+	list_for_each_safe (it_leaf, it_tmp, &irq->leaf_nodes) {
+		leaf_node = list_entry(it_leaf, struct lwis_interrupt_leaf_node, node);
+		list_del(&leaf_node->node);
+		kfree(leaf_node->leaf_irq_indexes);
+		kfree(leaf_node);
+	}
+}
+
 void lwis_interrupt_list_free(struct lwis_interrupt_list *list)
 {
 	int i;
@@ -80,6 +98,7 @@ void lwis_interrupt_list_free(struct lwis_interrupt_list *list)
 	}
 
 	for (i = 0; i < list->count; ++i) {
+		lwis_interrupt_free_leaves(&list->irq[i]);
 		free_irq(list->irq[i].irq, &list->irq[i]);
 	}
 	kfree(list->irq);
@@ -324,7 +343,8 @@ static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 						    event->event_id &&
 					    event_state->event_control.flags &
 						    LWIS_EVENT_CONTROL_FLAG_IRQ_ENABLE_ONCE) {
-						dev_err_ratelimited(irq->lwis_dev->dev,
+						dev_err_ratelimited(
+							irq->lwis_dev->dev,
 							"IRQ(%s) event(0x%llx) enabled once\n",
 							irq->name, event->event_id);
 						lwis_interrupt_set_mask(irq, event->int_reg_bit,
@@ -409,6 +429,8 @@ void lwis_interrupt_set_basic_info(struct lwis_interrupt_list *list, int index,
 	hash_init(list->irq[index].event_infos);
 	/* Initialize an empty list for enabled events */
 	INIT_LIST_HEAD(&list->irq[index].enabled_event_infos);
+	/* Initialize an empty list for leaf nodes */
+	INIT_LIST_HEAD(&list->irq[index].leaf_nodes);
 	spin_unlock_irqrestore(&list->irq[index].lock, flags);
 }
 
@@ -475,6 +497,26 @@ int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index, i
 	list->irq[index].has_events = true;
 	spin_unlock_irqrestore(&list->irq[index].lock, flags);
 
+	return 0;
+}
+
+int lwis_interrupt_add_leaf(struct lwis_interrupt_list *list, int index, uint32_t int_reg_bit,
+			    int count, int32_t *leaf_indexes)
+{
+	struct lwis_interrupt_leaf_node *new_leaf_node;
+	unsigned long flags;
+
+	new_leaf_node = kmalloc(sizeof(struct lwis_interrupt_leaf_node), GFP_KERNEL);
+	if (IS_ERR_OR_NULL(new_leaf_node)) {
+		return -ENOMEM;
+	}
+
+	new_leaf_node->int_reg_bit = int_reg_bit;
+	new_leaf_node->count = count;
+	new_leaf_node->leaf_irq_indexes = leaf_indexes;
+	spin_lock_irqsave(&list->irq[index].lock, flags);
+	list_add(&new_leaf_node->node, &list->irq[index].leaf_nodes);
+	spin_unlock_irqrestore(&list->irq[index].lock, flags);
 	return 0;
 }
 
