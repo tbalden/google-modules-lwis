@@ -47,11 +47,15 @@ lwis_client_event_state_find_locked(struct lwis_client *lwis_client, int64_t eve
 {
 	/* Our hash iterator */
 	struct lwis_client_event_state *p;
+	int64_t new_event_id;
 
+	new_event_id = (event_id & LWIS_OVERFLOW_IRQ_EVENT_FLAG) ?
+			       (event_id ^ LWIS_OVERFLOW_IRQ_EVENT_FLAG) :
+			       event_id;
 	/* Iterate through the hash bucket for this event_id */
-	hash_for_each_possible (lwis_client->event_states, p, node, event_id) {
+	hash_for_each_possible (lwis_client->event_states, p, node, new_event_id) {
 		/* If it's indeed the right one, return it */
-		if (p->event_control.event_id == event_id) {
+		if (p->event_control.event_id == new_event_id) {
 			return p;
 		}
 	}
@@ -162,11 +166,15 @@ lwis_device_event_state_find_locked(struct lwis_device *lwis_dev, int64_t event_
 {
 	/* Our hash iterator */
 	struct lwis_device_event_state *p;
+	int64_t new_event_id;
 
+	new_event_id = (event_id & LWIS_OVERFLOW_IRQ_EVENT_FLAG) ?
+			       (event_id ^ LWIS_OVERFLOW_IRQ_EVENT_FLAG) :
+			       event_id;
 	/* Iterate through the hash bucket for this event_id */
-	hash_for_each_possible (lwis_dev->event_states, p, node, event_id) {
+	hash_for_each_possible (lwis_dev->event_states, p, node, new_event_id) {
 		/* If it's indeed the right one, return it */
-		if (p->event_id == event_id) {
+		if (p->event_id == new_event_id) {
 			return p;
 		}
 	}
@@ -569,7 +577,8 @@ static int lwis_client_event_push_back(struct lwis_client *lwis_client,
 			list_first_entry(&lwis_client->event_queue, struct lwis_event_entry, node);
 		current_timestamp = lwis_get_time();
 		timestamp_diff = ktime_sub(current_timestamp, first_event->event_info.timestamp_ns);
-		lwis_dev_err_ratelimited(lwis_client->lwis_dev->dev,
+		lwis_dev_err_ratelimited(
+			lwis_client->lwis_dev->dev,
 			"First event in queue ID: 0x%llx, current timestamp %lld ns, diff: %lld ns\n",
 			event->event_info.event_id, current_timestamp, timestamp_diff);
 		spin_unlock_irqrestore(&lwis_client->event_lock, flags);
@@ -717,7 +726,7 @@ int lwis_device_event_flags_updated(struct lwis_device *lwis_dev, int64_t event_
 		/* Call our handler dispatcher */
 		ret = lwis_device_event_enable(lwis_dev, event_id, event_enabled);
 		if (ret) {
-			dev_err(lwis_dev->dev, "Failed to %s event: %lld (err:%d)\n",
+			dev_err(lwis_dev->dev, "Failed to %s event: 0x%llx (err:%d)\n",
 				event_enabled ? "enable" : "disable", event_id, ret);
 			return ret;
 		}
@@ -820,13 +829,21 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev, int64_t eve
 
 	device_event_state = lwis_device_event_state_find_locked(lwis_dev, event_id);
 	if (IS_ERR_OR_NULL(device_event_state)) {
-		dev_err(lwis_dev->dev, "Device event state not found %llx\n", event_id);
+		dev_err(lwis_dev->dev, "Device event state not found 0x%llx\n", event_id);
 		spin_unlock_irqrestore(&lwis_dev->lock, flags);
 		return -EINVAL;
 	}
 
-	/* Increment the event counter */
-	device_event_state->event_counter++;
+	/* When the event is overflow, we increase the event counter +2
+	 * so that userspace driver should be aware that at least
+	 * one interrupt was lost upon receiving an event with the overflow flag.
+	 */
+	if (event_id & LWIS_OVERFLOW_IRQ_EVENT_FLAG) {
+		device_event_state->event_counter += 2;
+	} else {
+		device_event_state->event_counter++;
+	}
+
 	/* Save event counter to local variable */
 	event_counter = device_event_state->event_counter;
 	/* Latch timestamp */
@@ -892,7 +909,8 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev, int64_t eve
 			}
 			ret = lwis_client_event_push_back(lwis_client, event);
 			if (ret) {
-				lwis_dev_err_ratelimited(lwis_dev->dev,
+				lwis_dev_err_ratelimited(
+					lwis_dev->dev,
 					"Failed to push event to queue: ID 0x%llx Counter %lld\n",
 					event_id, event_counter);
 				kfree(event);
@@ -928,8 +946,8 @@ int lwis_device_event_emit(struct lwis_device *lwis_dev, int64_t event_id, void 
 					  &pending_events);
 	if (ret) {
 		lwis_dev_err_ratelimited(lwis_dev->dev,
-			"lwis_device_event_emit_impl failed: event ID 0x%llx\n",
-			event_id);
+					 "lwis_device_event_emit_impl failed: event ID 0x%llx\n",
+					 event_id);
 		return ret;
 	}
 
@@ -1070,7 +1088,8 @@ void lwis_device_external_event_emit(struct lwis_device *lwis_dev, int64_t event
 			event->event_info.payload_size = 0;
 			event->event_info.payload_buffer = NULL;
 			if (lwis_client_event_push_back(lwis_client, event)) {
-				lwis_dev_err_ratelimited(lwis_dev->dev,
+				lwis_dev_err_ratelimited(
+					lwis_dev->dev,
 					"Failed to push event to queue: ID 0x%llx Counter %lld\n",
 					event_id, event_counter);
 				kfree(event);
@@ -1128,8 +1147,8 @@ void lwis_device_error_event_emit(struct lwis_device *lwis_dev, int64_t event_id
 		}
 		if (lwis_client_error_event_push_back(lwis_client, event)) {
 			lwis_dev_err_ratelimited(lwis_dev->dev,
-				"Failed to push error event to queue: ID 0x%llx\n",
-				event_id);
+						 "Failed to push error event to queue: ID 0x%llx\n",
+						 event_id);
 			kfree(event);
 			return;
 		}
