@@ -454,7 +454,9 @@ enum lwis_cmd_id {
 
 	LWIS_CMD_ID_DPM_CLK_UPDATE = 0x70000,
 	LWIS_CMD_ID_DPM_QOS_UPDATE = 0x70100,
-	LWIS_CMD_ID_DPM_GET_CLOCK = 0x70200
+	LWIS_CMD_ID_DPM_GET_CLOCK = 0x70200,
+
+	LWIS_CMD_ID_FENCE_CREATE = 0x80000
 };
 
 struct lwis_cmd_pkt {
@@ -557,6 +559,13 @@ struct lwis_cmd_dpm_clk_get {
 	struct lwis_cmd_pkt header;
 	struct lwis_qos_setting setting;
 };
+
+#ifdef LWIS_FENCE_ENABLED
+struct lwis_cmd_fence_create {
+	struct lwis_cmd_pkt header;
+	int32_t fd;
+};
+#endif
 
 /*
  *  IOCTL Commands

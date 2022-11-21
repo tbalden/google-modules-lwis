@@ -1198,6 +1198,30 @@ err_exit:
 	return copy_pkt_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
 }
 
+#ifdef LWIS_FENCE_ENABLED
+static int cmd_fence_create(struct lwis_device *lwis_dev, struct lwis_cmd_pkt *header,
+			    struct lwis_cmd_fence_create __user *u_msg)
+{
+	int32_t fd_or_err;
+	struct lwis_cmd_fence_create fence_create;
+
+	if (copy_from_user((void *)&fence_create, (void __user *)u_msg, sizeof(fence_create))) {
+		dev_err(lwis_dev->dev, "failed to copy from user\n");
+		return -EFAULT;
+	}
+
+	fd_or_err = lwis_fence_create(lwis_dev);
+	if (fd_or_err < 0) {
+		header->ret_code = fd_or_err;
+		return copy_pkt_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+	}
+
+	fence_create.fd = fd_or_err;
+	fence_create.header.ret_code = 0;
+	return copy_pkt_to_user(lwis_dev, u_msg, (void *)&fence_create, sizeof(fence_create));
+}
+#endif
+
 int lwis_ioctl_handle_cmd_pkt(struct lwis_client *lwis_client, struct lwis_cmd_pkt __user *user_msg)
 {
 	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
@@ -1324,6 +1348,12 @@ int lwis_ioctl_handle_cmd_pkt(struct lwis_client *lwis_client, struct lwis_cmd_p
 			ret = cmd_dpm_get_clock(lwis_dev, &header,
 						(struct lwis_cmd_dpm_clk_get __user *)user_msg);
 			break;
+#ifdef LWIS_FENCE_ENABLED
+		case LWIS_CMD_ID_FENCE_CREATE:
+			ret = cmd_fence_create(lwis_dev, &header,
+					       (struct lwis_cmd_fence_create __user *)user_msg);
+			break;
+#endif
 		default:
 			dev_err_ratelimited(lwis_dev->dev, "Unknown command id\n");
 			header.ret_code = -EINVAL;
