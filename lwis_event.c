@@ -990,7 +990,7 @@ int lwis_pending_events_emit(struct lwis_device *lwis_dev, struct list_head *pen
 							  pending_events, in_irq);
 		if (emit_result) {
 			return_val = emit_result;
-			dev_warn(lwis_dev->dev,
+			dev_warn_ratelimited(lwis_dev->dev,
 				 "lwis_device_pending_event_emit error on ID 0x%llx\n",
 				 event->event_info.event_id);
 		}
