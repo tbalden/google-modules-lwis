@@ -58,6 +58,8 @@ struct lwis_interrupt {
 	/* List of enabled events */
 	/* GUARDED_BY(lock) */
 	struct list_head enabled_event_infos;
+	/* Select the interrupt line behavior */
+	int irq_gpios_types;
 };
 
 /*
@@ -100,7 +102,7 @@ int lwis_interrupt_get(struct lwis_interrupt_list *list, int index,
  *  Returns: 0 if success, -ve if error
  */
 int lwis_interrupt_get_gpio_irq(struct lwis_interrupt_list *list, int index, char *name,
-				int gpio_irq);
+				int gpio_irq, int32_t *irq_gpios_types);
 
 /*
  * lwis_interrupt_set_basic_info: Provides basic register info for a given
