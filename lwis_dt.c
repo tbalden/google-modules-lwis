@@ -67,6 +67,7 @@ static int parse_irq_gpios(struct lwis_device *lwis_dev)
 	int count;
 	int name_count;
 	int event_count;
+	int type_count;
 	int ret;
 	struct device *dev;
 	struct device_node *dev_node;
@@ -74,6 +75,7 @@ static int parse_irq_gpios(struct lwis_device *lwis_dev)
 	const char *name;
 	char *irq_gpios_names = NULL;
 	u64 *irq_gpios_events = NULL;
+	u32 *irq_gpios_types = NULL;
 	int i;
 
 	/* Initialize the data structure */
@@ -93,7 +95,9 @@ static int parse_irq_gpios(struct lwis_device *lwis_dev)
 	dev_node = dev->of_node;
 	name_count = of_property_count_strings(dev_node, "irq-gpios-names");
 	event_count = of_property_count_elems_of_size(dev_node, "irq-gpios-events", sizeof(u64));
-	if (count != event_count || count != name_count) {
+	type_count = of_property_count_elems_of_size(dev_node, "irq-gpios-types", sizeof(u32));
+
+	if (count != event_count || count != name_count || count != type_count) {
 		pr_err("Count of irq-gpios-* is not match\n");
 		return -EINVAL;
 	}
@@ -122,7 +126,24 @@ static int parse_irq_gpios(struct lwis_device *lwis_dev)
 			LWIS_MAX_NAME_STRING_LEN);
 	}
 
-	ret = lwis_gpio_list_to_irqs(lwis_dev, &lwis_dev->irq_gpios_info, irq_gpios_names);
+	irq_gpios_types = kmalloc(sizeof(u32) * type_count, GFP_KERNEL);
+	if (IS_ERR_OR_NULL(irq_gpios_types)) {
+		pr_err("Allocating irq_gpios_flags list failed\n");
+		ret = -ENOMEM;
+		goto error_parse_irq_gpios;
+	}
+
+	type_count = of_property_read_variable_u32_array(
+		dev_node, "irq-gpios-types", irq_gpios_types, type_count, type_count);
+
+	if (type_count != count) {
+		pr_err("Error getting irq-gpios-types: %d\n", type_count);
+		ret = type_count;
+		goto error_parse_irq_gpios;
+	}
+
+	ret = lwis_gpio_list_to_irqs(lwis_dev, &lwis_dev->irq_gpios_info, irq_gpios_names,
+				     irq_gpios_types);
 	if (ret) {
 		pr_err("Error get GPIO irq list (%d)\n", ret);
 		goto error_parse_irq_gpios;
@@ -154,6 +175,7 @@ static int parse_irq_gpios(struct lwis_device *lwis_dev)
 
 	kfree(irq_gpios_names);
 	kfree(irq_gpios_events);
+	kfree(irq_gpios_types);
 	return 0;
 
 error_parse_irq_gpios:
@@ -161,12 +183,9 @@ error_parse_irq_gpios:
 		lwis_gpio_list_put(lwis_dev->irq_gpios_info.gpios, dev);
 		lwis_dev->irq_gpios_info.gpios = NULL;
 	}
-	if (irq_gpios_names) {
-		kfree(irq_gpios_names);
-	}
-	if (irq_gpios_events) {
-		kfree(irq_gpios_events);
-	}
+	kfree(irq_gpios_names);
+	kfree(irq_gpios_events);
+	kfree(irq_gpios_types);
 	return ret;
 }
 

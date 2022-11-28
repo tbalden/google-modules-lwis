@@ -134,7 +134,7 @@ int lwis_interrupt_get(struct lwis_interrupt_list *list, int index,
 }
 
 int lwis_interrupt_get_gpio_irq(struct lwis_interrupt_list *list, int index, char *name,
-				int gpio_irq)
+				int gpio_irq, int32_t *irq_gpios_types)
 {
 	int ret = 0;
 
@@ -150,9 +150,11 @@ int lwis_interrupt_get_gpio_irq(struct lwis_interrupt_list *list, int index, cha
 		 list->lwis_dev->name, name);
 	list->irq[index].has_events = false;
 	list->irq[index].lwis_dev = list->lwis_dev;
+	list->irq[index].irq_gpios_types = irq_gpios_types[index];
 
-	ret = request_irq(gpio_irq, lwis_interrupt_gpios_event_isr, IRQF_SHARED,
-			  list->irq[index].full_name, &list->irq[index]);
+	ret = request_irq(gpio_irq, lwis_interrupt_gpios_event_isr,
+			  list->irq[index].irq_gpios_types, list->irq[index].full_name,
+			  &list->irq[index]);
 	if (ret) {
 		dev_err(list->lwis_dev->dev, "Failed to request GPIO IRQ\n");
 		return ret;
