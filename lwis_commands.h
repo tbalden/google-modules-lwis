@@ -250,6 +250,9 @@ struct lwis_echo {
 // Status code for unsignaled LWIS fence
 #define LWIS_FENCE_STATUS_NOT_SIGNALED -1
 
+// Interval in ms for the Heartbeat Event if enabled
+#define LWIS_HEARTBEAT_EVENT_INTERVAL_MS 10
+
 struct lwis_event_info {
 	// IOCTL Inputs
 	size_t payload_buffer_size;
