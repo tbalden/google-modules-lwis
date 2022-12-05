@@ -134,7 +134,7 @@ int lwis_interrupt_get(struct lwis_interrupt_list *list, int index,
 }
 
 int lwis_interrupt_get_gpio_irq(struct lwis_interrupt_list *list, int index, char *name,
-				int gpio_irq, int32_t *irq_gpios_types)
+				int gpio_irq, int32_t irq_gpios_types)
 {
 	int ret = 0;
 
@@ -150,7 +150,7 @@ int lwis_interrupt_get_gpio_irq(struct lwis_interrupt_list *list, int index, cha
 		 list->lwis_dev->name, name);
 	list->irq[index].has_events = false;
 	list->irq[index].lwis_dev = list->lwis_dev;
-	list->irq[index].irq_gpios_types = irq_gpios_types[index];
+	list->irq[index].irq_gpios_types = irq_gpios_types;
 
 	ret = request_irq(gpio_irq, lwis_interrupt_gpios_event_isr,
 			  list->irq[index].irq_gpios_types, list->irq[index].full_name,
