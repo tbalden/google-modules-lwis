@@ -109,6 +109,14 @@ static int parse_irq_gpios(struct lwis_device *lwis_dev)
 	}
 	lwis_dev->irq_gpios_info.gpios = gpios;
 
+	lwis_dev->irq_gpios_info.irq_list = lwis_interrupt_list_alloc(lwis_dev, gpios->ndescs);
+	if (IS_ERR(lwis_dev->irq_gpios_info.irq_list)) {
+		ret = -ENOMEM;
+		lwis_dev->irq_gpios_info.irq_list = NULL;
+		pr_err("Failed to allocate irq list\n");
+		goto error_parse_irq_gpios;
+	}
+
 	irq_gpios_names = kmalloc(LWIS_MAX_NAME_STRING_LEN * name_count, GFP_KERNEL);
 	if (IS_ERR_OR_NULL(irq_gpios_names)) {
 		pr_err("Allocating event list failed\n");
@@ -128,7 +136,7 @@ static int parse_irq_gpios(struct lwis_device *lwis_dev)
 
 	irq_gpios_types = kmalloc(sizeof(u32) * type_count, GFP_KERNEL);
 	if (IS_ERR_OR_NULL(irq_gpios_types)) {
-		pr_err("Allocating irq_gpios_flags list failed\n");
+		pr_err("Allocating irq_gpios_types list failed\n");
 		ret = -ENOMEM;
 		goto error_parse_irq_gpios;
 	}
@@ -139,13 +147,6 @@ static int parse_irq_gpios(struct lwis_device *lwis_dev)
 	if (type_count != count) {
 		pr_err("Error getting irq-gpios-types: %d\n", type_count);
 		ret = type_count;
-		goto error_parse_irq_gpios;
-	}
-
-	ret = lwis_gpio_list_to_irqs(lwis_dev, &lwis_dev->irq_gpios_info, irq_gpios_names,
-				     irq_gpios_types);
-	if (ret) {
-		pr_err("Error get GPIO irq list (%d)\n", ret);
 		goto error_parse_irq_gpios;
 	}
 
@@ -173,6 +174,20 @@ static int parse_irq_gpios(struct lwis_device *lwis_dev)
 		}
 	}
 
+	for (i = 0; i < gpios->ndescs; ++i) {
+		char *name;
+		int irq;
+		irq = gpiod_to_irq(gpios->desc[i]);
+		if (irq < 0) {
+			pr_err("gpio to irq failed (%d)\n", irq);
+			lwis_interrupt_list_free(lwis_dev->irq_gpios_info.irq_list);
+			return irq;
+		}
+		name = irq_gpios_names + i * LWIS_MAX_NAME_STRING_LEN;
+		lwis_interrupt_get_gpio_irq(lwis_dev->irq_gpios_info.irq_list, i, name, irq,
+					    irq_gpios_types[i]);
+	}
+
 	kfree(irq_gpios_names);
 	kfree(irq_gpios_events);
 	kfree(irq_gpios_types);
@@ -182,6 +197,10 @@ error_parse_irq_gpios:
 	if (lwis_dev->irq_gpios_info.gpios) {
 		lwis_gpio_list_put(lwis_dev->irq_gpios_info.gpios, dev);
 		lwis_dev->irq_gpios_info.gpios = NULL;
+	}
+	if (lwis_dev->irq_gpios_info.irq_list) {
+		lwis_interrupt_list_free(lwis_dev->irq_gpios_info.irq_list);
+		lwis_dev->irq_gpios_info.irq_list = NULL;
 	}
 	kfree(irq_gpios_names);
 	kfree(irq_gpios_events);
