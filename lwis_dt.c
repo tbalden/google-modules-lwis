@@ -412,6 +412,84 @@ static int parse_critical_irq_events(struct device_node *event_info, u64** irq_e
 	return critical_irq_events_num;
 }
 
+static int parse_interrupts_event_info(struct lwis_interrupt_list *list, int index,
+				       struct device_node *event_info)
+{
+	int irq_events_num;
+	int int_reg_bits_num;
+	int critical_events_num = 0;
+	u64 *irq_events;
+	u32 *int_reg_bits;
+	u64 *critical_events = NULL;
+	int ret = 0;
+
+	irq_events_num = of_property_count_elems_of_size(event_info, "irq-events", 8);
+	if (irq_events_num <= 0) {
+		pr_err("Error getting irq-events: %d\n", irq_events_num);
+		ret = -EINVAL;
+		return ret;
+	}
+
+	int_reg_bits_num = of_property_count_elems_of_size(event_info, "int-reg-bits", 4);
+	if (irq_events_num != int_reg_bits_num || int_reg_bits_num <= 0) {
+		pr_err("Error getting int-reg-bits: %d\n", int_reg_bits_num);
+		ret = -EINVAL;
+		return ret;
+	}
+
+	irq_events = kmalloc(sizeof(u64) * irq_events_num, GFP_KERNEL);
+	if (IS_ERR_OR_NULL(irq_events)) {
+		ret = -ENOMEM;
+		return ret;
+	}
+
+	int_reg_bits = kmalloc(sizeof(u32) * int_reg_bits_num, GFP_KERNEL);
+	if (IS_ERR_OR_NULL(int_reg_bits)) {
+		ret = -ENOMEM;
+		kfree(irq_events);
+		return ret;
+	}
+
+	irq_events_num = of_property_read_variable_u64_array(event_info, "irq-events", irq_events,
+							     irq_events_num, irq_events_num);
+	if (irq_events_num != int_reg_bits_num) {
+		pr_err("Error getting irq-events: %d\n", irq_events_num);
+		ret = irq_events_num;
+		goto event_info_exit;
+	}
+
+	int_reg_bits_num = of_property_read_variable_u32_array(
+		event_info, "int-reg-bits", int_reg_bits, int_reg_bits_num, int_reg_bits_num);
+	if (irq_events_num != int_reg_bits_num) {
+		pr_err("Error getting int-reg-bits: %d\n", int_reg_bits_num);
+		ret = int_reg_bits_num;
+		goto event_info_exit;
+	}
+
+	critical_events_num = parse_critical_irq_events(event_info, &critical_events);
+
+	ret = lwis_interrupt_set_event_info(list, index, (int64_t *)irq_events, irq_events_num,
+					    int_reg_bits, int_reg_bits_num,
+					    (int64_t *)critical_events, critical_events_num);
+	if (ret) {
+		pr_err("Error setting event info for interrupt %d %d\n", index, ret);
+		goto event_info_exit;
+	}
+
+event_info_exit:
+	kfree(critical_events);
+	kfree(irq_events);
+	kfree(int_reg_bits);
+	return ret;
+}
+
+static int parse_interrupt_leaf_nodes(struct lwis_interrupt_list *list, int index,
+				      struct device_node *leaf_info)
+{
+	/* TODO(bian): implement parse_interrupt_leaf_nodes */
+	return 0;
+}
+
 static int parse_interrupts(struct lwis_device *lwis_dev)
 {
 	int i;
@@ -441,9 +519,9 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 
 	for (i = 0; i < count; ++i) {
 		of_property_read_string_index(dev_node, "interrupt-names", i, &name);
-		ret = lwis_interrupt_get(lwis_dev->irqs, i, (char *)name, plat_dev);
+		ret = lwis_interrupt_init(lwis_dev->irqs, i, (char *)name);
 		if (ret) {
-			pr_err("Cannot set irq %s\n", name);
+			pr_err("Cannot initialize irq %s\n", name);
 			goto error_get_irq;
 		}
 	}
@@ -458,79 +536,23 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 	/* Get event infos */
 	i = 0;
 	of_for_each_phandle (&it, ret, dev_node, "interrupt-event-infos", 0, 0) {
-		const char *irq_reg_space = NULL;
+		const char *irq_reg_space = NULL, *irq_type_str = NULL;
 		bool irq_mask_reg_toggle;
 		u64 irq_src_reg;
 		u64 irq_reset_reg;
 		u64 irq_mask_reg;
 		u64 irq_overflow_reg = 0;
-		int irq_events_num;
-		int int_reg_bits_num;
-		int critical_events_num = 0;
-		u64 *irq_events;
-		u32 *int_reg_bits;
-		u64 *critical_events = NULL;
 		int irq_reg_bid = -1;
 		int irq_reg_bid_count;
 		/* To match default value of reg-addr/value-bitwidth. */
 		u32 irq_reg_bitwidth = 32;
+		int32_t irq_type = REGULAR_INTERRUPT;
 		int j;
 		struct device_node *event_info = of_node_get(it.node);
-
-		irq_events_num = of_property_count_elems_of_size(event_info, "irq-events", 8);
-		if (irq_events_num <= 0) {
-			pr_err("Error getting irq-events: %d\n", irq_events_num);
-			ret = -EINVAL;
-			goto error_event_infos;
-		}
-
-		int_reg_bits_num = of_property_count_elems_of_size(event_info, "int-reg-bits", 4);
-		if (irq_events_num != int_reg_bits_num || int_reg_bits_num <= 0) {
-			pr_err("Error getting int-reg-bits: %d\n", int_reg_bits_num);
-			ret = -EINVAL;
-			goto error_event_infos;
-		}
-
-		irq_events = kmalloc(sizeof(u64) * irq_events_num, GFP_KERNEL);
-		if (IS_ERR_OR_NULL(irq_events)) {
-			ret = -ENOMEM;
-			goto error_event_infos;
-		}
-
-		int_reg_bits = kmalloc(sizeof(u32) * int_reg_bits_num, GFP_KERNEL);
-		if (IS_ERR_OR_NULL(int_reg_bits)) {
-			ret = -ENOMEM;
-			kfree(irq_events);
-			goto error_event_infos;
-		}
-
-		irq_events_num = of_property_read_variable_u64_array(
-			event_info, "irq-events", irq_events, irq_events_num, irq_events_num);
-		if (irq_events_num != int_reg_bits_num) {
-			pr_err("Error getting irq-events: %d\n", irq_events_num);
-			ret = irq_events_num;
-			kfree(irq_events);
-			kfree(int_reg_bits);
-			goto error_event_infos;
-		}
-
-		int_reg_bits_num =
-			of_property_read_variable_u32_array(event_info, "int-reg-bits",
-							    int_reg_bits, int_reg_bits_num,
-							    int_reg_bits_num);
-		if (irq_events_num != int_reg_bits_num) {
-			pr_err("Error getting int-reg-bits: %d\n", int_reg_bits_num);
-			ret = int_reg_bits_num;
-			kfree(irq_events);
-			kfree(int_reg_bits);
-			goto error_event_infos;
-		}
 
 		ret = of_property_read_string(event_info, "irq-reg-space", &irq_reg_space);
 		if (ret) {
 			pr_err("Error getting irq-reg-space from dt: %d\n", ret);
-			kfree(irq_events);
-			kfree(int_reg_bits);
 			goto error_event_infos;
 		}
 
@@ -538,8 +560,6 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 
 		if (irq_reg_bid_count <= 0) {
 			pr_err("Error getting reg-names from dt: %d\n", irq_reg_bid_count);
-			kfree(irq_events);
-			kfree(int_reg_bits);
 			goto error_event_infos;
 		}
 		for (j = 0; j < irq_reg_bid_count; j++) {
@@ -556,32 +576,24 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 		}
 		if (irq_reg_bid < 0) {
 			pr_err("Could not find a reg bid for %s\n", irq_reg_space);
-			kfree(irq_events);
-			kfree(int_reg_bits);
 			goto error_event_infos;
 		}
 
 		ret = of_property_read_u64(event_info, "irq-src-reg", &irq_src_reg);
 		if (ret) {
 			pr_err("Error getting irq-src-reg from dt: %d\n", ret);
-			kfree(irq_events);
-			kfree(int_reg_bits);
 			goto error_event_infos;
 		}
 
 		ret = of_property_read_u64(event_info, "irq-reset-reg", &irq_reset_reg);
 		if (ret) {
 			pr_err("Error getting irq-reset-reg from dt: %d\n", ret);
-			kfree(irq_events);
-			kfree(int_reg_bits);
 			goto error_event_infos;
 		}
 
 		ret = of_property_read_u64(event_info, "irq-mask-reg", &irq_mask_reg);
 		if (ret) {
 			pr_err("Error getting irq-mask-reg from dt: %d\n", ret);
-			kfree(irq_events);
-			kfree(int_reg_bits);
 			goto error_event_infos;
 		}
 
@@ -591,30 +603,58 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 
 		of_property_read_u32(event_info, "irq-reg-bitwidth", &irq_reg_bitwidth);
 
-		critical_events_num = parse_critical_irq_events(event_info, &critical_events);
-
-		ret = lwis_interrupt_set_event_info(
-			lwis_dev->irqs, i, irq_reg_space, irq_reg_bid, (int64_t *)irq_events,
-			irq_events_num, int_reg_bits, int_reg_bits_num, irq_src_reg, irq_reset_reg,
-			irq_mask_reg, irq_overflow_reg, irq_mask_reg_toggle, irq_reg_bitwidth,
-			(int64_t *)critical_events, critical_events_num);
-		if (ret) {
-			pr_err("Error setting event info for interrupt %d %d\n", i, ret);
-			if (critical_events) {
-				kfree(critical_events);
+		ret = of_property_read_string(event_info, "irq-type", &irq_type_str);
+		if (ret && ret != -EINVAL) {
+			pr_err("Error getting irq-type from dt: %d\n", ret);
+			return ret;
+		} else if (ret && ret == -EINVAL) {
+			/* The property does not exist, which means regular*/
+			irq_type = REGULAR_INTERRUPT;
+		} else {
+			if (strcmp(irq_type_str, "regular") == 0) {
+				irq_type = REGULAR_INTERRUPT;
+			} else if (strcmp(irq_type_str, "aggregate") == 0) {
+				irq_type = AGGREGATE_INTERRUPT;
+			} else if (strcmp(irq_type_str, "leaf") == 0) {
+				irq_type = LEAF_INTERRUPT;
+			} else {
+				pr_err("Invalid irq-type from dt: %s\n", irq_type_str);
+				return ret;
 			}
-			kfree(irq_events);
-			kfree(int_reg_bits);
+		}
+
+		lwis_interrupt_set_basic_info(lwis_dev->irqs, i, irq_reg_space, irq_reg_bid,
+					      irq_src_reg, irq_reset_reg, irq_mask_reg,
+					      irq_overflow_reg, irq_mask_reg_toggle,
+					      irq_reg_bitwidth, irq_type);
+
+		/* Register IRQ handler only for aggregate and regular interrupts */
+		if (irq_type == AGGREGATE_INTERRUPT || irq_type == REGULAR_INTERRUPT) {
+			ret = lwis_interrupt_get(lwis_dev->irqs, i, plat_dev);
+			if (ret) {
+				pr_err("Cannot set irq %s\n", name);
+				goto error_event_infos;
+			}
+		}
+
+		/* Parse event info */
+		ret = parse_interrupts_event_info(lwis_dev->irqs, i, event_info);
+		if (ret) {
+			pr_err("Cannot set event info %s\n", name);
 			goto error_event_infos;
+		}
+
+		/* Parse leaf nodes if it's an aggregate interrupt */
+		if (irq_type == AGGREGATE_INTERRUPT) {
+			ret = parse_interrupt_leaf_nodes(lwis_dev->irqs, i, event_info);
+			if (ret) {
+				pr_err("Error setting leaf nodes for interrupt %d %d\n", i, ret);
+				goto error_event_infos;
+			}
 		}
 
 		of_node_put(event_info);
 		i++;
-		if (critical_events) {
-			kfree(critical_events);
-		}
-		kfree(irq_events);
-		kfree(int_reg_bits);
 	}
 
 #ifdef LWIS_DT_DEBUG

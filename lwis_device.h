@@ -154,14 +154,27 @@ struct lwis_client_debug_info {
 	int cur_transaction_hist_idx;
 };
 
+/*
+ * struct lwis_register_io_info
+ * This struct is to store the register read write info
+ */
+struct lwis_register_io_info {
+	struct lwis_io_entry io_entry;
+	size_t access_size;
+	int64_t start_timestamp;
+};
+
 /* struct lwis_device_debug_info
  * This struct applies to each of the LWIS devices, and the purpose is to
  * store information in help debugability.
  */
 #define EVENT_DEBUG_HISTORY_SIZE 16
+#define IO_ENTRY_DEBUG_HISTORY_SIZE 8
 struct lwis_device_debug_info {
 	struct lwis_device_event_state_history event_hist[EVENT_DEBUG_HISTORY_SIZE];
 	int cur_event_hist_idx;
+	struct lwis_register_io_info io_entry_hist[IO_ENTRY_DEBUG_HISTORY_SIZE];
+	int cur_io_entry_hist_idx;
 };
 
 /*

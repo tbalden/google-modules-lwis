@@ -18,6 +18,9 @@
 
 #define EVENT_INFO_HASH_BITS 8
 #define IRQ_FULL_NAME_LENGTH 32
+#define LEAF_NODE_HASH_BITS 8
+
+enum lwis_interrupt_types { REGULAR_INTERRUPT, AGGREGATE_INTERRUPT, LEAF_INTERRUPT };
 
 struct lwis_interrupt {
 	int irq;
@@ -47,6 +50,8 @@ struct lwis_interrupt {
 	int irq_reg_access_size;
 	/* If mask_reg actually disable the interrupts. */
 	bool mask_toggled;
+	/* Type of the interrupt */
+	int32_t irq_type;
 	/* Hash table of event info */
 	/* GUARDED_BY(lock) */
 	DECLARE_HASHTABLE(event_infos, EVENT_INFO_HASH_BITS);
@@ -79,10 +84,15 @@ struct lwis_interrupt_list *lwis_interrupt_list_alloc(struct lwis_device *lwis_d
 void lwis_interrupt_list_free(struct lwis_interrupt_list *list);
 
 /*
+ *  lwis_interrupt_init: Initialize the interrupt by index.
+ */
+int lwis_interrupt_init(struct lwis_interrupt_list *list, int index, char *name);
+
+/*
  *  lwis_interrupt_get: Register the interrupt by index.
  *  Returns: 0 if success, -ve if error
  */
-int lwis_interrupt_get(struct lwis_interrupt_list *list, int index, char *name,
+int lwis_interrupt_get(struct lwis_interrupt_list *list, int index,
 		       struct platform_device *plat_dev);
 
 /*
@@ -93,6 +103,16 @@ int lwis_interrupt_get_gpio_irq(struct lwis_interrupt_list *list, int index, cha
 				int gpio_irq);
 
 /*
+ * lwis_interrupt_set_basic_info: Provides basic register info for a given
+ * interrupt based on index
+ */
+void lwis_interrupt_set_basic_info(struct lwis_interrupt_list *list, int index,
+				   const char *irq_reg_space, int irq_reg_bid, int64_t irq_src_reg,
+				   int64_t irq_reset_reg, int64_t irq_mask_reg,
+				   int64_t irq_overflow_reg, bool mask_toggled,
+				   int irq_reg_access_size, int32_t irq_type);
+
+/*
  * lwis_interrupt_set_event_info: Provides event-info structure for a given
  * interrupt based on index
  *
@@ -100,13 +120,9 @@ int lwis_interrupt_get_gpio_irq(struct lwis_interrupt_list *list, int index, cha
  * Does not free irq_reg_space
  * Returns: 0 on success
  */
-int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index,
-				  const char *irq_reg_space, int irq_reg_bid, int64_t *irq_events,
+int lwis_interrupt_set_event_info(struct lwis_interrupt_list *list, int index, int64_t *irq_events,
 				  size_t irq_events_num, uint32_t *int_reg_bits,
-				  size_t int_reg_bits_num, int64_t irq_src_reg,
-				  int64_t irq_reset_reg, int64_t irq_mask_reg,
-				  int64_t irq_overflow_reg, bool mask_toggled,
-				  int irq_reg_access_size, int64_t *critical_events,
+				  size_t int_reg_bits_num, int64_t *critical_events,
 				  size_t critical_events_num);
 
 /*
