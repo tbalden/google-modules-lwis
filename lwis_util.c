@@ -90,6 +90,8 @@ const char *lwis_device_type_to_string(int32_t type)
 		return "IOREG";
 	case DEVICE_TYPE_SLC:
 		return "SLC";
+	case DEVICE_TYPE_TEST:
+		return "TEST";
 	case DEVICE_TYPE_UNKNOWN:
 	default:
 		return "UNKNOWN";

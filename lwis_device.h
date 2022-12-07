@@ -38,6 +38,7 @@
 #define LWIS_IOREG_DEVICE_COMPAT "google,lwis-ioreg-device"
 #define LWIS_SLC_DEVICE_COMPAT "google,lwis-slc-device"
 #define LWIS_DPM_DEVICE_COMPAT "google,lwis-dpm-device"
+#define LWIS_TEST_DEVICE_COMPAT "google,lwis-test-device"
 
 #define EVENT_HASH_BITS 8
 #define BUFFER_HASH_BITS 8
