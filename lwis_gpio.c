@@ -103,7 +103,7 @@ int lwis_gpio_list_set_input(struct gpio_descs *gpios)
 }
 
 int lwis_gpio_list_to_irqs(struct lwis_device *lwis_dev, struct lwis_gpios_info *gpios_info,
-			   char *irq_gpios_names)
+			   char *irq_gpios_names, int32_t *irq_gpios_types)
 {
 	struct gpio_descs *gpios;
 	struct lwis_interrupt_list *irq_list;
@@ -133,7 +133,7 @@ int lwis_gpio_list_to_irqs(struct lwis_device *lwis_dev, struct lwis_gpios_info 
 			return irq;
 		}
 		name = irq_gpios_names + i * LWIS_MAX_NAME_STRING_LEN;
-		lwis_interrupt_get_gpio_irq(irq_list, i, name, irq);
+		lwis_interrupt_get_gpio_irq(irq_list, i, name, irq, &irq_gpios_types[i]);
 	}
 
 	gpios_info->irq_list = irq_list;
