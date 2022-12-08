@@ -150,10 +150,6 @@ static int cmd_get_device_info(struct lwis_device *lwis_dev, struct lwis_cmd_pkt
 			lwis_dev->transaction_worker_thread->pid;
 	}
 
-	if (lwis_dev->periodic_io_worker_thread) {
-		k_info.info.periodic_io_thread_pid = lwis_dev->periodic_io_worker_thread->pid;
-	}
-
 	k_info.header.ret_code = 0;
 	return copy_pkt_to_user(lwis_dev, u_msg, (void *)&k_info, sizeof(k_info));
 }
