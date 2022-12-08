@@ -287,18 +287,6 @@ static int lwis_i2c_device_probe(struct platform_device *plat_dev)
 			goto error_probe;
 		}
 	}
-	if (i2c_dev->base_dev.periodic_io_thread_priority != 0) {
-		ret = lwis_set_kthread_priority(&i2c_dev->base_dev,
-			i2c_dev->base_dev.periodic_io_worker_thread,
-			i2c_dev->base_dev.periodic_io_thread_priority);
-		if (ret) {
-			dev_err(i2c_dev->base_dev.dev,
-				"Failed to set LWIS I2C periodic io kthread priority (%d)",
-				ret);
-			lwis_base_unprobe(&i2c_dev->base_dev);
-			goto error_probe;
-		}
-	}
 
 	dev_info(i2c_dev->base_dev.dev, "I2C Device Probe: Success\n");
 

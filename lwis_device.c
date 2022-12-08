@@ -73,6 +73,17 @@ static struct file_operations lwis_fops = {
 };
 
 /*
+ * transaction_work_func:
+ * Function to be called by transaction worker thread to direct it the correct client
+ * to process their queues
+ */
+static void transaction_work_func(struct kthread_work *work)
+{
+	struct lwis_client *client = container_of(work, struct lwis_client, transaction_work);
+	lwis_process_worker_queue(client);
+}
+
+/*
  *  lwis_open: Opening an instance of a LWIS device
  */
 static int lwis_open(struct inode *node, struct file *fp)
@@ -121,6 +132,8 @@ static int lwis_open(struct inode *node, struct file *fp)
 
 	/* Initialize the allocator */
 	lwis_allocator_init(lwis_dev);
+
+	kthread_init_work(&lwis_client->transaction_work, transaction_work_func);
 
 	/* Start transaction processor task */
 	lwis_transaction_init(lwis_client);
@@ -1617,6 +1630,12 @@ static void __exit lwis_driver_exit(void)
 
 	/* Unregister base lwis device */
 	lwis_unregister_base_device();
+}
+
+void lwis_process_worker_queue(struct lwis_client *client)
+{
+	lwis_process_transactions_in_queue(client);
+	lwis_process_periodic_io_in_queue(client);
 }
 
 subsys_initcall(lwis_base_device_init);

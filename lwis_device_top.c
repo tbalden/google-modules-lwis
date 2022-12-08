@@ -188,7 +188,7 @@ static void lwis_top_event_notify(struct lwis_device *lwis_dev, int64_t trigger_
 	list_add_tail(&trigger_event->node, &lwis_top_dev->emitted_event_list_work);
 	spin_unlock_irqrestore(&lwis_top_dev->base_dev.lock, flags);
 	/* Schedule deferred subscribed events */
-	kthread_queue_work(&lwis_top_dev->base_dev.subscribe_worker, &lwis_top_dev->subscribe_work);
+	kthread_queue_work(&lwis_top_dev->subscribe_worker, &lwis_top_dev->subscribe_work);
 }
 
 static int lwis_top_event_subscribe(struct lwis_device *lwis_dev, int64_t trigger_event_id,
@@ -361,8 +361,8 @@ static void lwis_top_event_subscribe_clear(struct lwis_top_device *lwis_top_dev)
 	}
 	spin_unlock_irqrestore(&lwis_top_dev->base_dev.lock, flags);
 
-	if (lwis_top_dev->base_dev.subscribe_worker_thread) {
-		kthread_flush_worker(&lwis_top_dev->base_dev.subscribe_worker);
+	if (lwis_top_dev->subscribe_worker_thread) {
+		kthread_flush_worker(&lwis_top_dev->subscribe_worker);
 	}
 }
 
@@ -502,6 +502,14 @@ static int lwis_top_device_probe(struct platform_device *plat_dev)
 	}
 
 	lwis_top_event_subscribe_init(top_dev);
+
+	kthread_init_worker(&top_dev->subscribe_worker);
+	top_dev->subscribe_worker_thread = kthread_run(kthread_worker_fn,
+			&top_dev->subscribe_worker, LWIS_SUBSCRIBER_THREAD_NAME);
+	if (IS_ERR(top_dev->subscribe_worker_thread)) {
+		dev_err(top_dev->base_dev.dev, "subscribe kthread_run failed\n");
+		goto error_probe;
+	}
 
 	/* Create associated kworker threads */
 	ret = lwis_create_kthread_workers(&top_dev->base_dev);

@@ -350,10 +350,9 @@ static void cancel_transaction(struct lwis_device *lwis_dev, struct lwis_transac
 	lwis_transaction_free(lwis_dev, transaction);
 }
 
-static void transaction_work_func(struct kthread_work *work)
+void lwis_process_transactions_in_queue(struct lwis_client *client)
 {
 	unsigned long flags;
-	struct lwis_client *client = container_of(work, struct lwis_client, transaction_work);
 	struct list_head *it_tran, *it_tran_tmp;
 	struct list_head pending_events;
 	struct list_head pending_fences;
@@ -386,7 +385,6 @@ int lwis_transaction_init(struct lwis_client *client)
 {
 	spin_lock_init(&client->transaction_lock);
 	INIT_LIST_HEAD(&client->transaction_process_queue);
-	kthread_init_work(&client->transaction_work, transaction_work_func);
 	client->transaction_counter = 0;
 	hash_init(client->transaction_list);
 	hash_init(client->pending_transactions);
