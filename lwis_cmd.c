@@ -880,7 +880,6 @@ static int cmd_transaction_submit(struct lwis_client *client, struct lwis_cmd_pk
 	if (ret) {
 		k_transaction_info.info.id = LWIS_ID_INVALID;
 		lwis_transaction_free(lwis_dev, k_transaction);
-		goto err_exit;
 	}
 
 	k_transaction_info.header.cmd_id = header->cmd_id;
@@ -937,7 +936,6 @@ static int cmd_transaction_replace(struct lwis_client *client, struct lwis_cmd_p
 	if (ret) {
 		k_transaction_info.info.id = LWIS_ID_INVALID;
 		lwis_transaction_free(lwis_dev, k_transaction);
-		goto err_exit;
 	}
 
 	k_transaction_info.header.cmd_id = header->cmd_id;
