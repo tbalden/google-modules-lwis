@@ -884,7 +884,8 @@ static int cmd_transaction_submit(struct lwis_client *client, struct lwis_cmd_pk
 
 	ret = lwis_initialize_transaction_fences(client, k_transaction);
 	if (ret) {
-		return ret;
+		lwis_transaction_free(lwis_dev, k_transaction);
+		goto err_exit;
 	}
 
 	spin_lock_irqsave(&client->transaction_lock, flags);
@@ -945,7 +946,8 @@ static int cmd_transaction_replace(struct lwis_client *client, struct lwis_cmd_p
 
 	ret = lwis_initialize_transaction_fences(client, k_transaction);
 	if (ret) {
-		return ret;
+		lwis_transaction_free(lwis_dev, k_transaction);
+		goto err_exit;
 	}
 
 	spin_lock_irqsave(&client->transaction_lock, flags);
