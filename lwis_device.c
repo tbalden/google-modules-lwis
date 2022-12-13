@@ -28,6 +28,7 @@
 #include "lwis_device.h"
 #include "lwis_device_dpm.h"
 #include "lwis_device_slc.h"
+#include "lwis_device_test.h"
 #include "lwis_dt.h"
 #include "lwis_event.h"
 #include "lwis_gpio.h"
@@ -1472,8 +1473,16 @@ static int __init lwis_base_device_init(void)
 		goto dpm_failure;
 	}
 
+	ret = lwis_test_device_init();
+	if (ret) {
+		pr_err("Failed to lwis_test_device_init (%d)\n", ret);
+		goto test_failure;
+	}
+
 	return 0;
 
+test_failure:
+	lwis_test_device_deinit();
 dpm_failure:
 	lwis_slc_device_deinit();
 slc_failure:
@@ -1569,6 +1578,7 @@ static void __exit lwis_driver_exit(void)
 	}
 
 	/* Deinit device classes */
+	lwis_test_device_deinit();
 	lwis_dpm_device_deinit();
 	lwis_slc_device_deinit();
 	lwis_i2c_device_deinit();

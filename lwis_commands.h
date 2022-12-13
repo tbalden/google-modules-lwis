@@ -50,6 +50,7 @@ extern "C" {
  * ioreg: for controlling mapped register I/O devices
  * slc  : for configuring system level cache partitions
  * dpm  : for dynamic power manager requests update.
+ * test : for test-specific devices.
  */
 enum lwis_device_types {
 	DEVICE_TYPE_UNKNOWN = -1,
@@ -58,6 +59,7 @@ enum lwis_device_types {
 	DEVICE_TYPE_IOREG,
 	DEVICE_TYPE_SLC,
 	DEVICE_TYPE_DPM,
+	DEVICE_TYPE_TEST,
 	NUM_DEVICE_TYPES
 };
 
