@@ -140,14 +140,6 @@ int lwis_create_kthread_workers(struct lwis_device *lwis_dev)
 		return -EINVAL;
 	}
 
-	kthread_init_worker(&lwis_dev->subscribe_worker);
-	lwis_dev->subscribe_worker_thread = kthread_run(kthread_worker_fn,
-			&lwis_dev->subscribe_worker, p_name);
-	if (IS_ERR(lwis_dev->subscribe_worker_thread)) {
-		dev_err(lwis_dev->dev, "subscribe kthread_run failed\n");
-		return -EINVAL;
-	}
-
 	return 0;
 }
 
