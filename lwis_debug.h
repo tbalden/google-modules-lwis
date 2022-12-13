@@ -16,7 +16,7 @@ void lwis_debug_save_register_io_to_history(struct lwis_device *lwis_dev,
 
 /* Functions to print debugging info */
 int lwis_debug_print_device_info(struct lwis_device *lwis_dev);
-int lwis_debug_print_event_states_info(struct lwis_device *lwis_dev);
+int lwis_debug_print_event_states_info(struct lwis_device *lwis_dev, int lwis_event_dump_cnt);
 int lwis_debug_print_transaction_info(struct lwis_device *lwis_dev);
 int lwis_debug_print_register_io_history(struct lwis_device *lwis_dev);
 int lwis_debug_print_buffer_info(struct lwis_device *lwis_dev);
