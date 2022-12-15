@@ -753,8 +753,7 @@ static void lwis_device_event_heartbeat_timer(struct timer_list *t)
 	int64_t event_id = LWIS_EVENT_ID_HEARTBEAT | (int64_t)lwis_dev->id
 							     << LWIS_EVENT_ID_EVENT_CODE_LEN;
 
-	lwis_device_event_emit(lwis_dev, event_id, NULL, 0,
-			       /*in_irq=*/false);
+	lwis_device_event_emit(lwis_dev, event_id, NULL, 0);
 
 	mod_timer(t, jiffies + msecs_to_jiffies(LWIS_HEARTBEAT_EVENT_INTERVAL_MS));
 }
@@ -814,7 +813,7 @@ int lwis_device_event_enable(struct lwis_device *lwis_dev, int64_t event_id, boo
 
 static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev, int64_t event_id,
 				       void *payload, size_t payload_size,
-				       struct list_head *pending_events, bool in_irq)
+				       struct list_head *pending_events)
 {
 	struct lwis_client_event_state *client_event_state;
 	struct lwis_device_event_state *device_event_state;
@@ -856,7 +855,7 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev, int64_t eve
 	/* Emit event to subscriber via top device */
 	if (has_subscriber) {
 		lwis_dev->top_dev->subscribe_ops.notify_event_subscriber(
-			lwis_dev->top_dev, event_id, event_counter, timestamp, in_irq);
+			lwis_dev->top_dev, event_id, event_counter, timestamp);
 	}
 
 	/* Run internal handler if any */
@@ -917,7 +916,7 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev, int64_t eve
 		/* Trigger transactions, if there's any that matches this event
 		   ID and counter */
 		if (lwis_transaction_event_trigger(lwis_client, event_id, event_counter,
-						   pending_events, in_irq)) {
+						   pending_events)) {
 			dev_warn(lwis_dev->dev,
 				 "Failed to process transactions: Event ID: 0x%llx Counter: %lld\n",
 				 event_id, event_counter);
@@ -928,7 +927,7 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev, int64_t eve
 }
 
 int lwis_device_event_emit(struct lwis_device *lwis_dev, int64_t event_id, void *payload,
-			   size_t payload_size, bool in_irq)
+			   size_t payload_size)
 {
 	int ret;
 	struct list_head pending_events;
@@ -939,7 +938,7 @@ int lwis_device_event_emit(struct lwis_device *lwis_dev, int64_t event_id, void 
 
 	/* Emit the original event */
 	ret = lwis_device_event_emit_impl(lwis_dev, event_id, payload, payload_size,
-					  &pending_events, in_irq);
+					  &pending_events);
 	if (ret) {
 		lwis_dev_err_ratelimited(lwis_dev->dev,
 			"lwis_device_event_emit_impl failed: event ID 0x%llx\n",
@@ -948,7 +947,7 @@ int lwis_device_event_emit(struct lwis_device *lwis_dev, int64_t event_id, void 
 	}
 
 	/* Emit pending events */
-	return lwis_pending_events_emit(lwis_dev, &pending_events, in_irq);
+	return lwis_pending_events_emit(lwis_dev, &pending_events);
 }
 
 int lwis_pending_event_push(struct list_head *pending_events, int64_t event_id, void *payload,
@@ -976,8 +975,7 @@ int lwis_pending_event_push(struct list_head *pending_events, int64_t event_id, 
 	return 0;
 }
 
-int lwis_pending_events_emit(struct lwis_device *lwis_dev, struct list_head *pending_events,
-			     bool in_irq)
+int lwis_pending_events_emit(struct lwis_device *lwis_dev, struct list_head *pending_events)
 {
 	int return_val = 0, emit_result = 0;
 	struct lwis_event_entry *event;
@@ -987,7 +985,7 @@ int lwis_pending_events_emit(struct lwis_device *lwis_dev, struct list_head *pen
 		emit_result = lwis_device_event_emit_impl(lwis_dev, event->event_info.event_id,
 							  event->event_info.payload_buffer,
 							  event->event_info.payload_size,
-							  pending_events, in_irq);
+							  pending_events);
 		if (emit_result) {
 			return_val = emit_result;
 			dev_warn_ratelimited(lwis_dev->dev,
@@ -1025,7 +1023,7 @@ out:
 }
 
 void lwis_device_external_event_emit(struct lwis_device *lwis_dev, int64_t event_id,
-				     int64_t event_counter, int64_t timestamp, bool in_irq)
+				     int64_t event_counter, int64_t timestamp)
 {
 	struct lwis_client_event_state *client_event_state;
 	struct lwis_device_event_state *device_event_state;
@@ -1094,14 +1092,13 @@ void lwis_device_external_event_emit(struct lwis_device *lwis_dev, int64_t event
 		}
 
 		if (lwis_transaction_event_trigger(lwis_client, event_id, event_counter,
-						   &pending_events, in_irq))
+						   &pending_events))
 			dev_warn(
 				lwis_dev->dev,
 				"Failed to process transactions: external event ID: 0x%llx counter: %lld\n",
 				event_id, event_counter);
 	}
-
-	lwis_pending_events_emit(lwis_dev, &pending_events, in_irq);
+	lwis_pending_events_emit(lwis_dev, &pending_events);
 }
 
 void lwis_device_error_event_emit(struct lwis_device *lwis_dev, int64_t event_id, void *payload,
