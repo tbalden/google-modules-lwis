@@ -871,6 +871,12 @@ static int cmd_transaction_submit(struct lwis_client *client, struct lwis_cmd_pk
 	int ret = 0;
 	unsigned long flags;
 
+	if (lwis_dev->type == DEVICE_TYPE_SLC || lwis_dev->type == DEVICE_TYPE_DPM) {
+		dev_err(lwis_dev->dev, "not supported device type: %d\n", lwis_dev->type);
+		ret = -EINVAL;
+		goto err_exit;
+	}
+
 	ret = construct_transaction_from_cmd(client, u_msg, &k_transaction);
 	if (ret) {
 		goto err_exit;
