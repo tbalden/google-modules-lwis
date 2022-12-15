@@ -120,7 +120,7 @@ struct lwis_event_subscribe_operations {
 	/* Notify subscriber when an event is happening */
 	void (*notify_event_subscriber)(struct lwis_device *lwis_dev, int64_t trigger_event_id,
 					int64_t trigger_event_count,
-					int64_t trigger_event_timestamp, bool in_irq);
+					int64_t trigger_event_timestamp);
 	/* Clean up event subscription hash table when unloading top device */
 	void (*release)(struct lwis_device *lwis_dev);
 };

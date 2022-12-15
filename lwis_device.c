@@ -1105,8 +1105,7 @@ static void event_heartbeat_timer(struct timer_list *t)
 	int64_t event_id = LWIS_EVENT_ID_HEARTBEAT | (int64_t)lwis_dev->id
 							     << LWIS_EVENT_ID_EVENT_CODE_LEN;
 
-	lwis_device_event_emit(lwis_dev, event_id, NULL, 0,
-			       /*in_irq=*/false);
+	lwis_device_event_emit(lwis_dev, event_id, NULL, 0);
 
 	mod_timer(t, jiffies + msecs_to_jiffies(LWIS_HEARTBEAT_EVENT_INTERVAL_MS));
 }

@@ -13,7 +13,6 @@
 
 #include <linux/mm.h>
 #include <linux/mutex.h>
-#include <linux/preempt.h>
 #include <linux/slab.h>
 #include "lwis_allocator.h"
 #include "lwis_commands.h"

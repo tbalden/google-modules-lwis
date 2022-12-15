@@ -406,7 +406,7 @@ int lwis_ioctl_util_synchronous_process_io_entries(struct lwis_device *lwis_dev,
 			ret = register_write(lwis_dev, &io_entries[i]);
 			break;
 		case LWIS_IO_ENTRY_POLL:
-			ret = lwis_io_entry_poll(lwis_dev, &io_entries[i], /*non_blocking=*/false);
+			ret = lwis_io_entry_poll(lwis_dev, &io_entries[i]);
 			break;
 		case LWIS_IO_ENTRY_READ_ASSERT:
 			ret = lwis_io_entry_read_assert(lwis_dev, &io_entries[i]);
