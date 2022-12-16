@@ -300,8 +300,8 @@ static irqreturn_t lwis_interrupt_event_isr(int irq_number, void *data)
 		/* Check if this event needs to be emitted */
 		if ((source_value >> event->int_reg_bit) & 0x1) {
 			/* Emit the event */
-			lwis_device_event_emit(irq->lwis_dev, event->event_id, NULL, 0,
-					       /*in_irq=*/true);
+			lwis_device_event_emit(irq->lwis_dev, event->event_id,
+					       NULL, 0);
 			/* Clear this interrupt */
 			reset_value |= (1ULL << event->int_reg_bit);
 
@@ -374,7 +374,8 @@ static irqreturn_t lwis_interrupt_gpios_event_isr(int irq_number, void *data)
 	list_for_each (p, &irq->enabled_event_infos) {
 		event = list_entry(p, struct lwis_single_event_info, node_enabled);
 		/* Emit the event */
-		lwis_device_event_emit(irq->lwis_dev, event->event_id, NULL, 0, /*in_irq=*/true);
+		lwis_device_event_emit(irq->lwis_dev, event->event_id,
+							   NULL, 0);
 	}
 	spin_unlock_irqrestore(&irq->lock, flags);
 

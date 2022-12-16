@@ -234,7 +234,7 @@ static int process_io_entries(struct lwis_client *client,
 			read_buf += sizeof(struct lwis_periodic_io_result) +
 				    io_result->io_result.num_value_bytes;
 		} else if (entry->type == LWIS_IO_ENTRY_POLL) {
-			ret = lwis_io_entry_poll(lwis_dev, entry, /*non_blocking=*/false);
+			ret = lwis_io_entry_poll(lwis_dev, entry);
 			if (ret) {
 				resp->error_code = ret;
 				goto event_push;
@@ -329,9 +329,7 @@ static void periodic_io_work_func(struct kthread_work *work)
 		kfree(periodic_io_proxy);
 	}
 	spin_unlock_irqrestore(&client->periodic_io_lock, flags);
-
-	lwis_pending_events_emit(client->lwis_dev, &pending_events,
-				 /*in_irq=*/false);
+	lwis_pending_events_emit(client->lwis_dev, &pending_events);
 }
 
 static int prepare_emit_events(struct lwis_client *client, struct lwis_periodic_io *periodic_io)

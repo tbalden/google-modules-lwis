@@ -120,7 +120,7 @@ struct lwis_event_subscribe_operations {
 	/* Notify subscriber when an event is happening */
 	void (*notify_event_subscriber)(struct lwis_device *lwis_dev, int64_t trigger_event_id,
 					int64_t trigger_event_count,
-					int64_t trigger_event_timestamp, bool in_irq);
+					int64_t trigger_event_timestamp);
 	/* Clean up event subscription hash table when unloading top device */
 	void (*release)(struct lwis_device *lwis_dev);
 };
@@ -316,12 +316,9 @@ struct lwis_client {
 	DECLARE_HASHTABLE(enrolled_buffers, BUFFER_HASH_BITS);
 	/* Hash table of transactions keyed by trigger event ID */
 	DECLARE_HASHTABLE(transaction_list, TRANSACTION_HASH_BITS);
-	/* Transaction task-related variables */
-	struct tasklet_struct transaction_tasklet;
 	/* Spinlock used to synchronize access to transaction data structs */
 	spinlock_t transaction_lock;
 	/* List of transaction triggers */
-	struct list_head transaction_process_queue_tasklet;
 	struct list_head transaction_process_queue;
 	/* Transaction counter, which also provides transacton ID */
 	int64_t transaction_counter;
@@ -412,5 +409,12 @@ void lwis_dev_power_seq_list_print(struct lwis_device_power_sequence_list *list)
  * Use the customized function handle to print information from each device registered in LWIS.
  */
 void lwis_device_info_dump(const char *name, void (*func)(struct lwis_device *));
+
+/*
+ * lwis_device_crash_info_dump:
+ * Use the customized function handle to print information from each device registered in LWIS
+ * when usersapce crash.
+ */
+void lwis_device_crash_info_dump(struct lwis_device *lwis_dev);
 
 #endif /* LWIS_DEVICE_H_ */

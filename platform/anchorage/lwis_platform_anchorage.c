@@ -80,7 +80,7 @@ static int lwis_iommu_fault_handler(struct iommu_fault *fault, void *param)
 	pr_err("\n");
 	lwis_debug_print_transaction_info(lwis_dev);
 	pr_err("\n");
-	lwis_debug_print_event_states_info(lwis_dev);
+	lwis_debug_print_event_states_info(lwis_dev, /*lwis_event_dump_cnt=*/-1);
 	pr_err("\n");
 	lwis_debug_print_buffer_info(lwis_dev);
 	pr_err("\n");

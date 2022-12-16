@@ -29,6 +29,7 @@
 #endif
 
 #define LWIS_DRIVER_NAME "lwis-top"
+#define LWIS_SUBSCRIBER_THREAD_NAME "lwis_s_top"
 
 static int lwis_top_register_io(struct lwis_device *lwis_dev, struct lwis_io_entry *entry,
 				int access_size);
@@ -48,8 +49,7 @@ static int lwis_top_event_subscribe(struct lwis_device *lwis_dev, int64_t trigge
 static int lwis_top_event_unsubscribe(struct lwis_device *lwis_dev, int64_t trigger_event_id,
 				      int subscriber_device_id);
 static void lwis_top_event_notify(struct lwis_device *lwis_dev, int64_t trigger_event_id,
-				  int64_t trigger_event_count, int64_t trigger_event_timestamp,
-				  bool in_irq);
+				  int64_t trigger_event_count, int64_t trigger_event_timestamp);
 static void lwis_top_event_subscribe_release(struct lwis_device *lwis_dev);
 static struct lwis_event_subscribe_operations top_subscribe_ops = {
 	.subscribe_event = lwis_top_event_subscribe,
@@ -160,8 +160,7 @@ static void subscribe_work_func(struct kthread_work *work)
 			lwis_device_external_event_emit(subscribe_info->subscriber_dev,
 							trigger_event->trigger_event_id,
 							trigger_event->trigger_event_count,
-							trigger_event->trigger_event_timestamp,
-							false);
+							trigger_event->trigger_event_timestamp);
 		}
 		kfree(trigger_event);
 	}
@@ -169,8 +168,7 @@ static void subscribe_work_func(struct kthread_work *work)
 }
 
 static void lwis_top_event_notify(struct lwis_device *lwis_dev, int64_t trigger_event_id,
-				  int64_t trigger_event_count, int64_t trigger_event_timestamp,
-				  bool in_irq)
+				  int64_t trigger_event_count, int64_t trigger_event_timestamp)
 {
 	struct lwis_top_device *lwis_top_dev =
 		container_of(lwis_dev, struct lwis_top_device, base_dev);
@@ -505,6 +503,14 @@ static int lwis_top_device_probe(struct platform_device *plat_dev)
 	}
 
 	lwis_top_event_subscribe_init(top_dev);
+
+	kthread_init_worker(&top_dev->base_dev.subscribe_worker);
+	top_dev->base_dev.subscribe_worker_thread = kthread_run(kthread_worker_fn,
+			&top_dev->base_dev.subscribe_worker, LWIS_SUBSCRIBER_THREAD_NAME);
+	if (IS_ERR(top_dev->base_dev.subscribe_worker_thread)) {
+		dev_err(top_dev->base_dev.dev, "subscribe kthread_run failed\n");
+		goto error_probe;
+	}
 
 	/* Create associated kworker threads */
 	ret = lwis_create_kthread_workers(&top_dev->base_dev);

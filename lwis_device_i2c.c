@@ -20,7 +20,6 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/pm.h>
-#include <linux/preempt.h>
 #include <linux/sched.h>
 #include <linux/sched/types.h>
 #include <linux/slab.h>
