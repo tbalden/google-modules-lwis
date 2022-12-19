@@ -214,10 +214,6 @@ static int ioctl_get_device_info(struct lwis_device *lwis_dev, struct lwis_devic
 		k_info.transaction_worker_thread_pid = lwis_dev->transaction_worker_thread->pid;
 	}
 
-	if (lwis_dev->periodic_io_worker_thread) {
-		k_info.periodic_io_thread_pid = lwis_dev->periodic_io_worker_thread->pid;
-	}
-
 	if (copy_to_user((void __user *)msg, &k_info, sizeof(k_info))) {
 		dev_err(lwis_dev->dev, "Failed to copy device info to userspace\n");
 		return -EFAULT;

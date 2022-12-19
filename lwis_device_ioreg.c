@@ -149,18 +149,6 @@ static int lwis_ioreg_device_probe(struct platform_device *plat_dev)
 			goto error_probe;
 		}
 	}
-	if (ioreg_dev->base_dev.periodic_io_thread_priority != 0) {
-		ret = lwis_set_kthread_priority(&ioreg_dev->base_dev,
-			ioreg_dev->base_dev.periodic_io_worker_thread,
-			ioreg_dev->base_dev.periodic_io_thread_priority);
-		if (ret) {
-			dev_err(ioreg_dev->base_dev.dev,
-				"Failed to set LWIS IOREG periodic io kthread priority (%d)",
-				ret);
-			lwis_base_unprobe(&ioreg_dev->base_dev);
-			goto error_probe;
-		}
-	}
 
 	dev_info(ioreg_dev->base_dev.dev, "IOREG Device Probe: Success\n");
 

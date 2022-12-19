@@ -92,4 +92,6 @@ int lwis_trigger_event_add_weak_transaction(struct lwis_client *client,
 					    int64_t transaction_id,
 					    int64_t event_id);
 
+void lwis_process_transactions_in_queue(struct lwis_client *client);
+
 #endif /* LWIS_TRANSACTION_H_ */

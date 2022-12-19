@@ -277,7 +277,6 @@ struct lwis_device {
 	bool is_read_only;
 	/* Adjust thread priority */
 	u32 transaction_thread_priority;
-	u32 periodic_io_thread_priority;
 
 	/* LWIS allocator block manager */
 	struct lwis_allocator_block_mgr *block_mgr;
@@ -285,10 +284,6 @@ struct lwis_device {
 	/* Worker thread */
 	struct kthread_worker transaction_worker;
 	struct task_struct *transaction_worker_thread;
-	struct kthread_worker periodic_io_worker;
-	struct task_struct *periodic_io_worker_thread;
-	struct kthread_worker subscribe_worker;
-	struct task_struct *subscribe_worker_thread;
 };
 
 /*
@@ -328,7 +323,6 @@ struct lwis_client {
 	DECLARE_HASHTABLE(timer_list, PERIODIC_IO_HASH_BITS);
 	/* Work item */
 	struct kthread_work transaction_work;
-	struct kthread_work periodic_io_work;
 	/* Spinlock used to synchronize access to periodic io data structs */
 	spinlock_t periodic_io_lock;
 	/* Queue of all periodic_io pending processing */
@@ -416,5 +410,12 @@ void lwis_device_info_dump(const char *name, void (*func)(struct lwis_device *))
  * when usersapce crash.
  */
 void lwis_device_crash_info_dump(struct lwis_device *lwis_dev);
+
+/*
+ * lwis_process_worker_queue:
+ * Function to process the transaction process queue and
+ * periodic io queue on the transaction thread
+ */
+void lwis_process_worker_queue(struct lwis_client *client);
 
 #endif /* LWIS_DEVICE_H_ */

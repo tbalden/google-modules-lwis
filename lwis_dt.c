@@ -415,7 +415,37 @@ static int parse_pinctrls(struct lwis_device *lwis_dev, char *expected_state)
 	return 0;
 }
 
-static int parse_critical_irq_events(struct device_node *event_info, u64** irq_events)
+static int parse_irq_reg_bits(struct device_node *info, int *bits_num_result, u32 **reg_bits_result)
+{
+	int int_reg_bits_num;
+	u32 *int_reg_bits;
+
+	int_reg_bits_num = of_property_count_elems_of_size(info, "int-reg-bits", 4);
+	if (int_reg_bits_num <= 0) {
+		pr_err("Error getting int-reg-bits: %d\n", int_reg_bits_num);
+		return -EINVAL;
+	}
+
+	int_reg_bits = kmalloc(sizeof(u32) * int_reg_bits_num, GFP_KERNEL);
+	if (IS_ERR_OR_NULL(int_reg_bits)) {
+		pr_err("Failed to allocate memory for irq regiater bits\n");
+		return -ENOMEM;
+	}
+
+	*bits_num_result = int_reg_bits_num;
+	int_reg_bits_num = of_property_read_variable_u32_array(info, "int-reg-bits", int_reg_bits,
+							       int_reg_bits_num, int_reg_bits_num);
+	if (*bits_num_result != int_reg_bits_num) {
+		pr_err("Error getting int-reg-bits: %d\n", int_reg_bits_num);
+		kfree(int_reg_bits);
+		return int_reg_bits_num;
+	}
+	*reg_bits_result = int_reg_bits;
+
+	return 0;
+}
+
+static int parse_critical_irq_events(struct device_node *event_info, u64 **irq_events)
 {
 	int ret;
 	int critical_irq_events_num;
@@ -454,38 +484,29 @@ static int parse_interrupts_event_info(struct lwis_interrupt_list *list, int ind
 				       struct device_node *event_info)
 {
 	int irq_events_num;
-	int int_reg_bits_num;
+	int int_reg_bits_num = 0;
 	int critical_events_num = 0;
-	u64 *irq_events;
-	u32 *int_reg_bits;
+	u64 *irq_events = NULL;
+	u32 *int_reg_bits = NULL;
 	u64 *critical_events = NULL;
 	int ret = 0;
 
-	irq_events_num = of_property_count_elems_of_size(event_info, "irq-events", 8);
-	if (irq_events_num <= 0) {
-		pr_err("Error getting irq-events: %d\n", irq_events_num);
-		ret = -EINVAL;
+	ret = parse_irq_reg_bits(event_info, &int_reg_bits_num, &int_reg_bits);
+	if (ret) {
 		return ret;
 	}
 
-	int_reg_bits_num = of_property_count_elems_of_size(event_info, "int-reg-bits", 4);
-	if (irq_events_num != int_reg_bits_num || int_reg_bits_num <= 0) {
-		pr_err("Error getting int-reg-bits: %d\n", int_reg_bits_num);
+	irq_events_num = of_property_count_elems_of_size(event_info, "irq-events", 8);
+	if (irq_events_num != int_reg_bits_num || irq_events_num <= 0) {
+		pr_err("Error getting irq-events: %d\n", irq_events_num);
 		ret = -EINVAL;
-		return ret;
+		goto event_info_exit;
 	}
 
 	irq_events = kmalloc(sizeof(u64) * irq_events_num, GFP_KERNEL);
 	if (IS_ERR_OR_NULL(irq_events)) {
 		ret = -ENOMEM;
-		return ret;
-	}
-
-	int_reg_bits = kmalloc(sizeof(u32) * int_reg_bits_num, GFP_KERNEL);
-	if (IS_ERR_OR_NULL(int_reg_bits)) {
-		ret = -ENOMEM;
-		kfree(irq_events);
-		return ret;
+		goto event_info_exit;
 	}
 
 	irq_events_num = of_property_read_variable_u64_array(event_info, "irq-events", irq_events,
@@ -493,14 +514,6 @@ static int parse_interrupts_event_info(struct lwis_interrupt_list *list, int ind
 	if (irq_events_num != int_reg_bits_num) {
 		pr_err("Error getting irq-events: %d\n", irq_events_num);
 		ret = irq_events_num;
-		goto event_info_exit;
-	}
-
-	int_reg_bits_num = of_property_read_variable_u32_array(
-		event_info, "int-reg-bits", int_reg_bits, int_reg_bits_num, int_reg_bits_num);
-	if (irq_events_num != int_reg_bits_num) {
-		pr_err("Error getting int-reg-bits: %d\n", int_reg_bits_num);
-		ret = int_reg_bits_num;
 		goto event_info_exit;
 	}
 
@@ -521,11 +534,94 @@ event_info_exit:
 	return ret;
 }
 
+static int find_irq_index_by_name(struct lwis_interrupt_list *list, const char *irq_name)
+{
+	int i;
+
+	for (i = 0; i < list->count; ++i) {
+		if (strncmp(irq_name, list->irq[i].name, IRQ_FULL_NAME_LENGTH - 1) == 0) {
+			return i;
+		}
+	}
+	return -ENOENT;
+}
+
 static int parse_interrupt_leaf_nodes(struct lwis_interrupt_list *list, int index,
 				      struct device_node *leaf_info)
 {
-	/* TODO(bian): implement parse_interrupt_leaf_nodes */
+	int irq_leaves_num;
+	int int_reg_bits_num;
+	u32 *int_reg_bits = NULL;
+	struct of_phandle_iterator it;
+	int i = 0, ret = 0;
+
+	ret = parse_irq_reg_bits(leaf_info, &int_reg_bits_num, &int_reg_bits);
+	if (ret) {
+		return ret;
+	}
+
+	irq_leaves_num = of_property_count_elems_of_size(leaf_info, "irq-leaf-nodes", 4);
+	if (irq_leaves_num != int_reg_bits_num || irq_leaves_num <= 0) {
+		pr_err("Error getting irq-leaf-nodes: %d\n", irq_leaves_num);
+		ret = -EINVAL;
+		kfree(int_reg_bits);
+		return ret;
+	}
+
+	i = 0;
+	of_for_each_phandle (&it, ret, leaf_info, "irq-leaf-nodes", 0, 0) {
+		struct device_node *irq_group_node = of_node_get(it.node);
+		int leaf_interrupts_count;
+		const char *leaf_interrupt_name;
+		int32_t *leaf_indexes = NULL;
+		int j = 0;
+
+		leaf_interrupts_count =
+			of_property_count_strings(irq_group_node, "leaf-interrupt-names");
+		if (leaf_interrupts_count == -ENODATA) {
+			/* Does not have a value means no leaf interrupt is configured for this */
+			/* leaf node */
+			continue;
+		} else if (leaf_interrupts_count < 0) {
+			pr_err("Error counting leaf-interrupt-names for : %d\n",
+			       leaf_interrupts_count);
+			ret = -EINVAL;
+			goto leaf_error;
+		}
+
+		leaf_indexes = kmalloc(sizeof(int32_t) * leaf_interrupts_count, GFP_KERNEL);
+		if (IS_ERR_OR_NULL(leaf_indexes)) {
+			ret = -ENOMEM;
+			goto leaf_error;
+		}
+
+		for (j = 0; j < leaf_interrupts_count; ++j) {
+			of_property_read_string_index(irq_group_node, "leaf-interrupt-names", j,
+						      &leaf_interrupt_name);
+			leaf_indexes[j] = find_irq_index_by_name(list, leaf_interrupt_name);
+			if (leaf_indexes[j] < 0) {
+				ret = leaf_indexes[j];
+				pr_err("Cannot find leaf irq %s\n", leaf_interrupt_name);
+				kfree(leaf_indexes);
+				goto leaf_error;
+			}
+		}
+
+		ret = lwis_interrupt_add_leaf(list, index, int_reg_bits[i], leaf_interrupts_count,
+					      leaf_indexes);
+		if (ret) {
+			pr_err("Error setting event info for interrupt %d %d\n", index, ret);
+			kfree(leaf_indexes);
+			goto leaf_error;
+		}
+		i++;
+	}
+
 	return 0;
+leaf_error:
+	lwis_interrupt_free_leaves(&list->irq[index]);
+	kfree(int_reg_bits);
+	return ret;
 }
 
 static int parse_interrupts(struct lwis_device *lwis_dev)
@@ -974,12 +1070,9 @@ static int parse_thread_priority(struct lwis_device *lwis_dev)
 
 	dev_node = lwis_dev->plat_dev->dev.of_node;
 	lwis_dev->transaction_thread_priority = 0;
-	lwis_dev->periodic_io_thread_priority = 0;
 
 	of_property_read_u32(dev_node, "transaction-thread-priority",
 			     &lwis_dev->transaction_thread_priority);
-	of_property_read_u32(dev_node, "periodic-io-thread-priority",
-			     &lwis_dev->periodic_io_thread_priority);
 
 	return 0;
 }
