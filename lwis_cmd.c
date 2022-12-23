@@ -360,7 +360,7 @@ static int cmd_device_suspend(struct lwis_client *lwis_client, struct lwis_cmd_p
 
 	if (!lwis_dev->suspend_sequence) {
 		dev_err(lwis_dev->dev, "No suspend sequence defined\n");
-		header->ret_code = -EINVAL;
+		header->ret_code = 0;
 		return copy_pkt_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
 	}
 
@@ -421,7 +421,7 @@ static int cmd_device_resume(struct lwis_client *lwis_client, struct lwis_cmd_pk
 
 	if (!lwis_dev->resume_sequence) {
 		dev_err(lwis_dev->dev, "No resume sequence defined\n");
-		header->ret_code = -EINVAL;
+		header->ret_code = 0;
 		return copy_pkt_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
 	}
 
