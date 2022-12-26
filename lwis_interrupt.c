@@ -701,7 +701,9 @@ static int lwis_interrupt_single_event_enable_locked(struct lwis_interrupt *irq,
 
 	/* If mask_toggled is set, reverse the enable/disable logic. */
 	is_set = (!irq->mask_toggled) ? enabled : !enabled;
-	ret = lwis_interrupt_set_mask(irq, event->int_reg_bit, is_set);
+	if (event->int_reg_bit) {
+		ret = lwis_interrupt_set_mask(irq, event->int_reg_bit, is_set);
+	}
 
 	return ret;
 }
