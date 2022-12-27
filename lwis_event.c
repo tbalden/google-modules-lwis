@@ -794,16 +794,6 @@ int lwis_device_event_enable(struct lwis_device *lwis_dev, int64_t event_id, boo
 				err = ret;
 			}
 		}
-
-		if (lwis_dev->irq_gpios_info.irq_list) {
-			ret = lwis_interrupt_event_enable(lwis_dev->irq_gpios_info.irq_list,
-							  event_id, enabled);
-			if (ret && ret != -EINVAL) {
-				dev_err(lwis_dev->dev, "Failed to %s GPIO IRQ event: %lld (e:%d)\n",
-					enabled ? "enable" : "disable", event_id, ret);
-				err = ret;
-			}
-		}
 	}
 	/* Check if our specialization cares about event updates */
 	if (!err && lwis_dev->vops.event_enable) {
