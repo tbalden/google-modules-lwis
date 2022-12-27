@@ -701,7 +701,10 @@ static int lwis_interrupt_single_event_enable_locked(struct lwis_interrupt *irq,
 
 	/* If mask_toggled is set, reverse the enable/disable logic. */
 	is_set = (!irq->mask_toggled) ? enabled : !enabled;
-	ret = lwis_interrupt_set_mask(irq, event->int_reg_bit, is_set);
+	/* I2C device doesn't support to set interrupt mask. */
+	if (irq->lwis_dev->type != DEVICE_TYPE_I2C) {
+		ret = lwis_interrupt_set_mask(irq, event->int_reg_bit, is_set);
+	}
 
 	return ret;
 }
