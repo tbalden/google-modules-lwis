@@ -176,6 +176,7 @@ int lwis_interrupt_get_gpio_irq(struct lwis_interrupt_list *list, int index, cha
 	list->irq[index].has_events = false;
 	list->irq[index].lwis_dev = list->lwis_dev;
 	list->irq[index].irq_gpios_types = irq_gpios_types;
+	list->irq[index].irq_type = GPIO_HW_INTERRUPT;
 
 	ret = request_irq(gpio_irq, lwis_interrupt_gpios_event_isr,
 			  list->irq[index].irq_gpios_types, list->irq[index].full_name,
@@ -701,8 +702,8 @@ static int lwis_interrupt_single_event_enable_locked(struct lwis_interrupt *irq,
 
 	/* If mask_toggled is set, reverse the enable/disable logic. */
 	is_set = (!irq->mask_toggled) ? enabled : !enabled;
-	/* I2C device doesn't support to set interrupt mask. */
-	if (irq->lwis_dev->type != DEVICE_TYPE_I2C) {
+	/* GPIO HW interrupt doesn't support to set interrupt mask */
+	if (irq->irq_type != GPIO_HW_INTERRUPT) {
 		ret = lwis_interrupt_set_mask(irq, event->int_reg_bit, is_set);
 	}
 

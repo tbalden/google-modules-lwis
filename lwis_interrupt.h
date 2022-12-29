@@ -20,7 +20,12 @@
 #define IRQ_FULL_NAME_LENGTH 32
 #define LEAF_NODE_HASH_BITS 8
 
-enum lwis_interrupt_types { REGULAR_INTERRUPT, AGGREGATE_INTERRUPT, LEAF_INTERRUPT };
+enum lwis_interrupt_types {
+	REGULAR_INTERRUPT,
+	AGGREGATE_INTERRUPT,
+	LEAF_INTERRUPT,
+	GPIO_HW_INTERRUPT
+};
 
 /*
  *  struct lwis_interrupt_leaf_node
