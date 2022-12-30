@@ -418,6 +418,7 @@ static int process_power_sequence(struct lwis_device *lwis_dev,
 		} else if (strcmp(list->seq_info[i].type, "gpio") == 0) {
 			struct lwis_gpios_info *gpios_info = NULL;
 			int set_value = 0;
+			bool set_state = true;
 
 			gpios_info = lwis_gpios_get_info_by_name(lwis_dev->gpios_list,
 								 list->seq_info[i].name);
@@ -477,6 +478,41 @@ static int process_power_sequence(struct lwis_device *lwis_dev,
 				set_value = 0;
 			}
 
+			if (gpios_info->is_shared && !set_active) {
+				struct lwis_device *lwis_dev_it;
+				struct lwis_gpios_info *gpios_info_it;
+
+				/* Look up if gpio it's already acquired */
+				mutex_lock(&core.lock);
+				list_for_each_entry (lwis_dev_it, &core.lwis_dev_list, dev_list) {
+					if ((lwis_dev->id != lwis_dev_it->id) &&
+					    lwis_dev_it->enabled && lwis_dev_it->gpios_list) {
+						gpios_info_it = lwis_gpios_get_info_by_name(
+							lwis_dev_it->gpios_list,
+							list->seq_info[i].name);
+						if (IS_ERR(gpios_info_it)) {
+							continue;
+						}
+						if (gpios_info_it->id == gpios_info->id &&
+						    gpios_info_it->gpios == NULL) {
+							dev_info(lwis_dev->dev,
+								 "Handover shared GPIO to %s\n",
+								 lwis_dev_it->name);
+							gpios_info_it->gpios = gpios_info->gpios;
+							gpios_info_it->hold_dev =
+								gpios_info->hold_dev;
+							set_state = false;
+							gpios_info->gpios = NULL;
+						}
+						break;
+					}
+				}
+				mutex_unlock(&core.lock);
+			}
+			if (!set_state) {
+				continue;
+			}
+
 			if (gpios_info->is_pulse) {
 				ret = lwis_gpio_list_set_output_value(gpios_info->gpios,
 								      1 - set_value);
@@ -500,7 +536,7 @@ static int process_power_sequence(struct lwis_device *lwis_dev,
 
 			if (!set_active) {
 				/* Release "ownership" of the GPIO pins */
-				lwis_gpio_list_put(gpios_info->gpios, &lwis_dev->plat_dev->dev);
+				lwis_gpio_list_put(gpios_info->gpios, gpios_info->hold_dev);
 				gpios_info->gpios = NULL;
 			}
 		} else if (strcmp(list->seq_info[i].type, "pinctrl") == 0) {

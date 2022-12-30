@@ -773,6 +773,8 @@ static int parse_power_seqs(struct lwis_device *lwis_dev, const char *seq_name,
 		for (i = 0; i < power_seq_count; ++i) {
 			struct lwis_gpios_info *gpios_info;
 			char *seq_item_name;
+			struct device *dev;
+			struct gpio_descs *descs;
 
 			if (strcmp((*list)->seq_info[i].type, "gpio") != 0) {
 				continue;
@@ -780,6 +782,21 @@ static int parse_power_seqs(struct lwis_device *lwis_dev, const char *seq_name,
 
 			gpios_info = &lwis_dev->gpios_list->gpios_info[type_gpio_count];
 			seq_item_name = (*list)->seq_info[i].name;
+			dev = &lwis_dev->plat_dev->dev;
+			descs = lwis_gpio_list_get(dev, seq_item_name);
+			if (IS_ERR(descs)) {
+				pr_err("Error parsing GPIO list %s (%ld)\n", seq_item_name,
+				       PTR_ERR(descs));
+				ret = PTR_ERR(descs);
+				goto error_parse_power_seqs;
+			}
+			gpios_info->id = desc_to_gpio(descs->desc[0]);
+			gpios_info->hold_dev = dev;
+			/*
+			 * The GPIO pins are valid, release the list as we do not need to hold
+			 * on to the pins yet
+			 */
+			lwis_gpio_list_put(descs, dev);
 
 			gpios_info->gpios = NULL;
 			gpios_info->irq_list = NULL;
