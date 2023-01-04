@@ -29,6 +29,7 @@
 
 #define LWIS_DRIVER_NAME "lwis-top"
 #define LWIS_SUBSCRIBER_THREAD_NAME "lwis_s_top"
+#define LWIS_SUBSCRIBER_THREAD_PRIORITY 99
 
 static int lwis_top_register_io(struct lwis_device *lwis_dev, struct lwis_io_entry *entry,
 				int access_size);
@@ -480,7 +481,6 @@ static int lwis_top_device_probe(struct platform_device *plat_dev)
 	/* Allocate top device specific data construct */
 	top_dev = kzalloc(sizeof(struct lwis_top_device), GFP_KERNEL);
 	if (!top_dev) {
-		pr_err("Failed to allocate top device structure\n");
 		return -ENOMEM;
 	}
 
@@ -491,7 +491,6 @@ static int lwis_top_device_probe(struct platform_device *plat_dev)
 	/* Call the base device probe function */
 	ret = lwis_base_probe(&top_dev->base_dev, plat_dev);
 	if (ret) {
-		pr_err("Error in lwis base probe\n");
 		goto error_probe;
 	}
 
@@ -517,6 +516,16 @@ static int lwis_top_device_probe(struct platform_device *plat_dev)
 	ret = lwis_create_kthread_workers(&top_dev->base_dev);
 	if (ret) {
 		dev_err(top_dev->base_dev.dev, "Failed to create lwis_top_kthread");
+		lwis_base_unprobe(&top_dev->base_dev);
+		goto error_probe;
+	}
+
+	ret = lwis_set_kthread_priority(&top_dev->base_dev,
+					top_dev->base_dev.subscribe_worker_thread,
+					LWIS_SUBSCRIBER_THREAD_PRIORITY);
+	if (ret) {
+		dev_err(top_dev->base_dev.dev,
+			"Failed to set LWIS top subscriber kthread priority (%d)", ret);
 		lwis_base_unprobe(&top_dev->base_dev);
 		goto error_probe;
 	}
