@@ -30,6 +30,11 @@
 
 #define LWIS_DRIVER_NAME "lwis-top"
 #define LWIS_SUBSCRIBER_THREAD_NAME "lwis_s_top"
+/*
+ * RT priority needed because events need to be transferred to
+ * another device in low latency.
+*/
+#define SUBSCRIBE_THREAD_PRIORITY 99
 
 static int lwis_top_register_io(struct lwis_device *lwis_dev, struct lwis_io_entry *entry,
 				int access_size);
@@ -512,6 +517,17 @@ static int lwis_top_device_probe(struct platform_device *plat_dev)
 		goto error_probe;
 	}
 
+	ret = lwis_set_kthread_priority(&top_dev->base_dev,
+		top_dev->subscribe_worker_thread,
+		SUBSCRIBE_THREAD_PRIORITY);
+	if (ret) {
+		dev_err(top_dev->base_dev.dev,
+		"Failed to set LWIS top subscription kthread priority (%d)",
+			ret);
+		lwis_base_unprobe(&top_dev->base_dev);
+		goto error_probe;
+	}
+
 	/* Create associated kworker threads */
 	ret = lwis_create_kthread_workers(&top_dev->base_dev);
 	if (ret) {
@@ -519,6 +535,8 @@ static int lwis_top_device_probe(struct platform_device *plat_dev)
 		lwis_base_unprobe(&top_dev->base_dev);
 		goto error_probe;
 	}
+
+	dev_info(top_dev->base_dev.dev, "Top Device Probe: Success\n");
 
 	return 0;
 
