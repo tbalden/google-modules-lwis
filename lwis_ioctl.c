@@ -1190,8 +1190,10 @@ static int ioctl_transaction_cancel(struct lwis_client *client, int64_t __user *
 
 	ret = lwis_transaction_cancel(client, id);
 	if (ret) {
-		dev_warn_ratelimited(lwis_dev->dev, "Failed to cancel transaction id 0x%llx (%d)\n",
-				     id, ret);
+		dev_info_ratelimited(
+			lwis_dev->dev,
+			"Transaction id 0x%llx does not exist or is already done, not available for cancel(%d)\n",
+			id, ret);
 		return ret;
 	}
 

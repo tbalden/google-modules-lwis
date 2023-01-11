@@ -918,8 +918,10 @@ static int cmd_transaction_cancel(struct lwis_client *client, struct lwis_cmd_pk
 
 	ret = lwis_transaction_cancel(client, k_msg.id);
 	if (ret) {
-		dev_warn_ratelimited(lwis_dev->dev, "Failed to cancel transaction id 0x%llx (%d)\n",
-				     k_msg.id, ret);
+		dev_info_ratelimited(
+			lwis_dev->dev,
+			"Transaction id 0x%llx does not exist or is already done, not available for cancel(%d)\n",
+			k_msg.id, ret);
 	}
 
 	header->ret_code = ret;
