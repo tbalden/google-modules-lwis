@@ -432,6 +432,7 @@ enum lwis_cmd_id {
 	LWIS_CMD_ID_DEVICE_RESET = 0x10300,
 	LWIS_CMD_ID_DEVICE_SUSPEND = 0x10400,
 	LWIS_CMD_ID_DEVICE_RESUME = 0x10500,
+	LWIS_CMD_ID_DUMP_DEBUG_STATE = 0x10600,
 
 	LWIS_CMD_ID_DMA_BUFFER_ENROLL = 0x20000,
 	LWIS_CMD_ID_DMA_BUFFER_DISENROLL = 0x20100,
@@ -585,6 +586,7 @@ struct lwis_cmd_fence_create {
 #define LWIS_REG_IO _IOWR(LWIS_IOC_TYPE, 11, struct lwis_io_entries)
 #define LWIS_ECHO _IOWR(LWIS_IOC_TYPE, 12, struct lwis_echo)
 #define LWIS_DEVICE_RESET _IOWR(LWIS_IOC_TYPE, 13, struct lwis_io_entries)
+#define LWIS_DUMP_DEBUG_STATE _IO(LWIS_IOC_TYPE, 14)
 
 #define LWIS_EVENT_CONTROL_GET _IOWR(LWIS_IOC_TYPE, 20, struct lwis_event_control)
 #define LWIS_EVENT_CONTROL_SET _IOW(LWIS_IOC_TYPE, 21, struct lwis_event_control_list)
