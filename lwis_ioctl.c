@@ -91,6 +91,10 @@ static void lwis_ioctl_pr_err(struct lwis_device *lwis_dev, unsigned int ioctl_t
 		strscpy(type_name, STRINGIFY(LWIS_DEVICE_RESET), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_DEVICE_RESET);
 		break;
+	case IOCTL_TO_ENUM(LWIS_DUMP_DEBUG_STATE):
+		strscpy(type_name, STRINGIFY(LWIS_DUMP_DEBUG_STATE), sizeof(type_name));
+		exp_size = IOCTL_ARG_SIZE(LWIS_DUMP_DEBUG_STATE);
+		break;
 	case IOCTL_TO_ENUM(LWIS_EVENT_CONTROL_GET):
 		strscpy(type_name, STRINGIFY(LWIS_EVENT_CONTROL_GET), sizeof(type_name));
 		exp_size = IOCTL_ARG_SIZE(LWIS_EVENT_CONTROL_GET);
@@ -793,6 +797,18 @@ soft_reset_exit:
 	return ret;
 }
 
+static int ioctl_dump_debug_state(struct lwis_client *lwis_client)
+{
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+
+	mutex_lock(&lwis_dev->client_lock);
+	/* Dump lwis device crash info */
+	lwis_device_crash_info_dump(lwis_dev);
+	mutex_unlock(&lwis_dev->client_lock);
+
+	return 0;
+}
+
 static int ioctl_event_control_get(struct lwis_client *lwis_client,
 				   struct lwis_event_control __user *msg)
 {
@@ -1439,7 +1455,8 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type, unsig
 	    type != LWIS_EVENT_CONTROL_GET && type != LWIS_TIME_QUERY &&
 	    type != LWIS_EVENT_DEQUEUE && type != LWIS_BUFFER_ENROLL &&
 	    type != LWIS_BUFFER_DISENROLL && type != LWIS_BUFFER_FREE &&
-	    type != LWIS_DPM_QOS_UPDATE && type != LWIS_DPM_GET_CLOCK && type != LWIS_CMD_PACKET) {
+	    type != LWIS_DPM_QOS_UPDATE && type != LWIS_DPM_GET_CLOCK && type != LWIS_CMD_PACKET &&
+	    type != LWIS_DUMP_DEBUG_STATE) {
 		ret = -EBADFD;
 		dev_err_ratelimited(lwis_dev->dev, "Unsupported IOCTL on disabled device.\n");
 		goto out;
@@ -1483,6 +1500,9 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type, unsig
 		break;
 	case LWIS_DEVICE_RESET:
 		ret = ioctl_device_reset(lwis_client, (struct lwis_io_entries *)param);
+		break;
+	case LWIS_DUMP_DEBUG_STATE:
+		ret = ioctl_dump_debug_state(lwis_client);
 		break;
 	case LWIS_EVENT_CONTROL_GET:
 		ret = ioctl_event_control_get(lwis_client, (struct lwis_event_control *)param);

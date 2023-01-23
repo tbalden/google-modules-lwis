@@ -451,6 +451,20 @@ exit_locked:
 	return copy_pkt_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
 }
 
+static int cmd_dump_debug_state(struct lwis_client *lwis_client, struct lwis_cmd_pkt *header,
+				struct lwis_cmd_pkt __user *u_msg)
+{
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+
+	mutex_lock(&lwis_dev->client_lock);
+	/* Dump lwis device crash info */
+	lwis_device_crash_info_dump(lwis_dev);
+	mutex_unlock(&lwis_dev->client_lock);
+
+	header->ret_code = 0;
+	return copy_pkt_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+}
+
 static int cmd_dma_buffer_enroll(struct lwis_client *lwis_client, struct lwis_cmd_pkt *header,
 				 struct lwis_cmd_dma_buffer_enroll __user *u_msg)
 {
@@ -1269,6 +1283,10 @@ int lwis_ioctl_handle_cmd_pkt(struct lwis_client *lwis_client, struct lwis_cmd_p
 		case LWIS_CMD_ID_DEVICE_RESUME:
 			ret = cmd_device_resume(lwis_client, &header,
 						(struct lwis_cmd_pkt __user *)user_msg);
+			break;
+		case LWIS_CMD_ID_DUMP_DEBUG_STATE:
+			ret = cmd_dump_debug_state(lwis_client, &header,
+						   (struct lwis_cmd_pkt __user *)user_msg);
 			break;
 		case LWIS_CMD_ID_DMA_BUFFER_ENROLL:
 			ret = cmd_dma_buffer_enroll(
