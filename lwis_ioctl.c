@@ -1520,14 +1520,10 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type, unsig
 		ret = ioctl_dump_debug_state(lwis_client);
 		break;
 	case LWIS_EVENT_CONTROL_GET:
-		mutex_lock(&lwis_client->lock);
 		ret = ioctl_event_control_get(lwis_client, (struct lwis_event_control *)param);
-		mutex_unlock(&lwis_client->lock);
 		break;
 	case LWIS_EVENT_CONTROL_SET:
-		mutex_lock(&lwis_client->lock);
 		ret = ioctl_event_control_set(lwis_client, (struct lwis_event_control_list *)param);
-		mutex_unlock(&lwis_client->lock);
 		break;
 	case LWIS_EVENT_DEQUEUE:
 		ret = ioctl_event_dequeue(lwis_client, (struct lwis_event_info *)param);
