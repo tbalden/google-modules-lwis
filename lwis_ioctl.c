@@ -1033,7 +1033,7 @@ int lwis_ioctl_util_construct_io_entry(struct lwis_client *client,
 							k_entries[i].rw_batch.size_in_bytes);
 			if (!k_buf) {
 				dev_err_ratelimited(lwis_dev->dev,
-					"Failed to allocate io write buffer\n");
+						    "Failed to allocate io write buffer\n");
 				ret = -ENOMEM;
 				goto error_free_buf;
 			}
@@ -1042,7 +1042,8 @@ int lwis_ioctl_util_construct_io_entry(struct lwis_client *client,
 			if (copy_from_user(k_buf, (void __user *)user_buf,
 					   k_entries[i].rw_batch.size_in_bytes)) {
 				ret = -EFAULT;
-				dev_err_ratelimited(lwis_dev->dev,
+				dev_err_ratelimited(
+					lwis_dev->dev,
 					"Failed to copy io write buffer from userspace\n");
 				goto error_free_buf;
 			}
@@ -1439,12 +1440,6 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type, unsig
 	bool device_disabled;
 	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
 
-	// Skip the lock for LWIS_EVENT_DEQUEUE because we want to emit events ASAP. The internal
-	// handler function of LWIS_EVENT_DEQUEUE will acquire the necessary lock.
-	if (type != LWIS_EVENT_DEQUEUE) {
-		mutex_lock(&lwis_client->lock);
-	}
-
 	mutex_lock(&lwis_dev->client_lock);
 	device_disabled = (lwis_dev->enabled == 0);
 	mutex_unlock(&lwis_dev->client_lock);
@@ -1467,48 +1462,72 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type, unsig
 		ret = lwis_ioctl_handle_cmd_pkt(lwis_client, (struct lwis_cmd_pkt *)param);
 		break;
 	case LWIS_GET_DEVICE_INFO:
+		mutex_lock(&lwis_client->lock);
 		ret = ioctl_get_device_info(lwis_dev, (struct lwis_device_info *)param);
+		mutex_unlock(&lwis_client->lock);
 		break;
 	case LWIS_BUFFER_ALLOC:
+		mutex_lock(&lwis_client->lock);
 		ret = ioctl_buffer_alloc(lwis_client, (struct lwis_alloc_buffer_info *)param);
+		mutex_unlock(&lwis_client->lock);
 		break;
 	case LWIS_BUFFER_FREE:
+		mutex_lock(&lwis_client->lock);
 		ret = ioctl_buffer_free(lwis_client, (int *)param);
+		mutex_unlock(&lwis_client->lock);
 		break;
 	case LWIS_BUFFER_ENROLL:
+		mutex_lock(&lwis_client->lock);
 		ret = ioctl_buffer_enroll(lwis_client, (struct lwis_buffer_info *)param);
+		mutex_unlock(&lwis_client->lock);
 		break;
 	case LWIS_BUFFER_DISENROLL:
+		mutex_lock(&lwis_client->lock);
 		ret = ioctl_buffer_disenroll(lwis_client,
 					     (struct lwis_enrolled_buffer_info *)param);
+		mutex_unlock(&lwis_client->lock);
 		break;
 	case LWIS_BUFFER_CPU_ACCESS:
+		mutex_lock(&lwis_client->lock);
 		ret = ioctl_buffer_cpu_access(lwis_client,
 					      (struct lwis_buffer_cpu_access_op *)param);
+		mutex_unlock(&lwis_client->lock);
 		break;
 	case LWIS_REG_IO:
+		mutex_lock(&lwis_client->lock);
 		ret = ioctl_reg_io(lwis_dev, (struct lwis_io_entries *)param);
+		mutex_unlock(&lwis_client->lock);
 		break;
 	case LWIS_DEVICE_ENABLE:
+		mutex_lock(&lwis_client->lock);
 		ret = ioctl_device_enable(lwis_client);
+		mutex_unlock(&lwis_client->lock);
 		break;
 	case LWIS_DEVICE_DISABLE:
+		mutex_lock(&lwis_client->lock);
 		ret = ioctl_device_disable(lwis_client);
+		mutex_unlock(&lwis_client->lock);
 		break;
 	case LWIS_ECHO:
 		ret = ioctl_echo(lwis_dev, (struct lwis_echo *)param);
 		break;
 	case LWIS_DEVICE_RESET:
+		mutex_lock(&lwis_client->lock);
 		ret = ioctl_device_reset(lwis_client, (struct lwis_io_entries *)param);
+		mutex_unlock(&lwis_client->lock);
 		break;
 	case LWIS_DUMP_DEBUG_STATE:
 		ret = ioctl_dump_debug_state(lwis_client);
 		break;
 	case LWIS_EVENT_CONTROL_GET:
+		mutex_lock(&lwis_client->lock);
 		ret = ioctl_event_control_get(lwis_client, (struct lwis_event_control *)param);
+		mutex_unlock(&lwis_client->lock);
 		break;
 	case LWIS_EVENT_CONTROL_SET:
+		mutex_lock(&lwis_client->lock);
 		ret = ioctl_event_control_set(lwis_client, (struct lwis_event_control_list *)param);
+		mutex_unlock(&lwis_client->lock);
 		break;
 	case LWIS_EVENT_DEQUEUE:
 		ret = ioctl_event_dequeue(lwis_client, (struct lwis_event_info *)param);
@@ -1517,28 +1536,44 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type, unsig
 		ret = ioctl_time_query(lwis_client, (int64_t *)param);
 		break;
 	case LWIS_TRANSACTION_SUBMIT:
+		mutex_lock(&lwis_client->lock);
 		ret = ioctl_transaction_submit(lwis_client, (struct lwis_transaction_info *)param);
+		mutex_unlock(&lwis_client->lock);
 		break;
 	case LWIS_TRANSACTION_CANCEL:
+		mutex_lock(&lwis_client->lock);
 		ret = ioctl_transaction_cancel(lwis_client, (int64_t *)param);
+		mutex_unlock(&lwis_client->lock);
 		break;
 	case LWIS_TRANSACTION_REPLACE:
+		mutex_lock(&lwis_client->lock);
 		ret = ioctl_transaction_replace(lwis_client, (struct lwis_transaction_info *)param);
+		mutex_unlock(&lwis_client->lock);
 		break;
 	case LWIS_PERIODIC_IO_SUBMIT:
+		mutex_lock(&lwis_client->lock);
 		ret = ioctl_periodic_io_submit(lwis_client, (struct lwis_periodic_io_info *)param);
+		mutex_unlock(&lwis_client->lock);
 		break;
 	case LWIS_PERIODIC_IO_CANCEL:
+		mutex_lock(&lwis_client->lock);
 		ret = ioctl_periodic_io_cancel(lwis_client, (int64_t *)param);
+		mutex_unlock(&lwis_client->lock);
 		break;
 	case LWIS_DPM_CLK_UPDATE:
+		mutex_lock(&lwis_client->lock);
 		ret = ioctl_dpm_clk_update(lwis_dev, (struct lwis_dpm_clk_settings *)param);
+		mutex_unlock(&lwis_client->lock);
 		break;
 	case LWIS_DPM_QOS_UPDATE:
+		mutex_lock(&lwis_client->lock);
 		ret = ioctl_dpm_qos_update(lwis_dev, (struct lwis_dpm_qos_requirements *)param);
+		mutex_unlock(&lwis_client->lock);
 		break;
 	case LWIS_DPM_GET_CLOCK:
+		mutex_lock(&lwis_client->lock);
 		ret = ioctl_dpm_get_clock(lwis_dev, (struct lwis_qos_setting *)param);
+		mutex_unlock(&lwis_client->lock);
 		break;
 #ifdef LWIS_FENCE_ENABLED
 	case LWIS_FENCE_CREATE:
@@ -1551,10 +1586,6 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type, unsig
 	};
 
 out:
-	if (type != LWIS_EVENT_DEQUEUE) {
-		mutex_unlock(&lwis_client->lock);
-	}
-
 	if (ret && ret != -ENOENT && ret != -ETIMEDOUT && ret != -EAGAIN) {
 		lwis_ioctl_pr_err(lwis_dev, type, ret);
 	}

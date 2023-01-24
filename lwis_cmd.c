@@ -1261,112 +1261,156 @@ int lwis_ioctl_handle_cmd_pkt(struct lwis_client *lwis_client, struct lwis_cmd_p
 					     (struct lwis_cmd_time_query __user *)user_msg);
 			break;
 		case LWIS_CMD_ID_GET_DEVICE_INFO:
+			mutex_lock(&lwis_client->lock);
 			ret = cmd_get_device_info(lwis_dev, &header,
 						  (struct lwis_cmd_device_info __user *)user_msg);
+			mutex_unlock(&lwis_client->lock);
 			break;
 		case LWIS_CMD_ID_DEVICE_ENABLE:
+			mutex_lock(&lwis_client->lock);
 			ret = cmd_device_enable(lwis_client, &header,
 						(struct lwis_cmd_pkt __user *)user_msg);
+			mutex_unlock(&lwis_client->lock);
 			break;
 		case LWIS_CMD_ID_DEVICE_DISABLE:
+			mutex_lock(&lwis_client->lock);
 			ret = cmd_device_disable(lwis_client, &header,
 						 (struct lwis_cmd_pkt __user *)user_msg);
+			mutex_unlock(&lwis_client->lock);
 			break;
 		case LWIS_CMD_ID_DEVICE_RESET:
+			mutex_lock(&lwis_client->lock);
 			ret = cmd_device_reset(lwis_client, &header,
 					       (struct lwis_cmd_io_entries __user *)user_msg);
+			mutex_unlock(&lwis_client->lock);
 			break;
 		case LWIS_CMD_ID_DEVICE_SUSPEND:
+			mutex_lock(&lwis_client->lock);
 			ret = cmd_device_suspend(lwis_client, &header,
 						 (struct lwis_cmd_pkt __user *)user_msg);
+			mutex_unlock(&lwis_client->lock);
 			break;
 		case LWIS_CMD_ID_DEVICE_RESUME:
+			mutex_lock(&lwis_client->lock);
 			ret = cmd_device_resume(lwis_client, &header,
 						(struct lwis_cmd_pkt __user *)user_msg);
+			mutex_unlock(&lwis_client->lock);
 			break;
 		case LWIS_CMD_ID_DUMP_DEBUG_STATE:
 			ret = cmd_dump_debug_state(lwis_client, &header,
 						   (struct lwis_cmd_pkt __user *)user_msg);
 			break;
 		case LWIS_CMD_ID_DMA_BUFFER_ENROLL:
+			mutex_lock(&lwis_client->lock);
 			ret = cmd_dma_buffer_enroll(
 				lwis_client, &header,
 				(struct lwis_cmd_dma_buffer_enroll __user *)user_msg);
+			mutex_unlock(&lwis_client->lock);
 			break;
 		case LWIS_CMD_ID_DMA_BUFFER_DISENROLL:
+			mutex_lock(&lwis_client->lock);
 			ret = cmd_dma_buffer_disenroll(
 				lwis_client, &header,
 				(struct lwis_cmd_dma_buffer_disenroll __user *)user_msg);
+			mutex_unlock(&lwis_client->lock);
 			break;
 		case LWIS_CMD_ID_DMA_BUFFER_CPU_ACCESS:
+			mutex_lock(&lwis_client->lock);
 			ret = cmd_dma_buffer_cpu_access(
 				lwis_client, &header,
 				(struct lwis_cmd_dma_buffer_cpu_access __user *)user_msg);
+			mutex_unlock(&lwis_client->lock);
 			break;
 		case LWIS_CMD_ID_DMA_BUFFER_ALLOC:
+			mutex_lock(&lwis_client->lock);
 			ret = cmd_dma_buffer_alloc(
 				lwis_client, &header,
 				(struct lwis_cmd_dma_buffer_alloc __user *)user_msg);
+			mutex_unlock(&lwis_client->lock);
 			break;
 		case LWIS_CMD_ID_DMA_BUFFER_FREE:
+			mutex_lock(&lwis_client->lock);
 			ret = cmd_dma_buffer_free(
 				lwis_client, &header,
 				(struct lwis_cmd_dma_buffer_free __user *)user_msg);
+			mutex_unlock(&lwis_client->lock);
 			break;
 		case LWIS_CMD_ID_REG_IO:
+			mutex_lock(&lwis_client->lock);
 			ret = cmd_reg_io(lwis_dev, &header,
 					 (struct lwis_cmd_io_entries __user *)user_msg);
+			mutex_unlock(&lwis_client->lock);
 			break;
 		case LWIS_CMD_ID_EVENT_CONTROL_GET:
+			mutex_lock(&lwis_client->lock);
 			ret = cmd_event_control_get(
 				lwis_client, &header,
 				(struct lwis_cmd_event_control_get __user *)user_msg);
+			mutex_unlock(&lwis_client->lock);
 			break;
 		case LWIS_CMD_ID_EVENT_CONTROL_SET:
+			mutex_lock(&lwis_client->lock);
 			ret = cmd_event_control_set(
 				lwis_client, &header,
 				(struct lwis_cmd_event_control_set __user *)user_msg);
+			mutex_unlock(&lwis_client->lock);
 			break;
 		case LWIS_CMD_ID_EVENT_DEQUEUE:
 			ret = cmd_event_dequeue(lwis_client, &header,
 						(struct lwis_cmd_event_dequeue __user *)user_msg);
 			break;
 		case LWIS_CMD_ID_TRANSACTION_SUBMIT:
+			mutex_lock(&lwis_client->lock);
 			ret = cmd_transaction_submit(
 				lwis_client, &header,
 				(struct lwis_cmd_transaction_info __user *)user_msg);
+			mutex_unlock(&lwis_client->lock);
 			break;
 		case LWIS_CMD_ID_TRANSACTION_CANCEL:
+			mutex_lock(&lwis_client->lock);
 			ret = cmd_transaction_cancel(
 				lwis_client, &header,
 				(struct lwis_cmd_transaction_cancel __user *)user_msg);
+			mutex_unlock(&lwis_client->lock);
 			break;
 		case LWIS_CMD_ID_TRANSACTION_REPLACE:
+			mutex_lock(&lwis_client->lock);
 			ret = cmd_transaction_replace(
 				lwis_client, &header,
 				(struct lwis_cmd_transaction_info __user *)user_msg);
+			mutex_unlock(&lwis_client->lock);
 			break;
 		case LWIS_CMD_ID_PERIODIC_IO_SUBMIT:
+			mutex_lock(&lwis_client->lock);
 			ret = cmd_periodic_io_submit(
 				lwis_client, &header,
 				(struct lwis_cmd_periodic_io_info __user *)user_msg);
+			mutex_unlock(&lwis_client->lock);
 			break;
 		case LWIS_CMD_ID_PERIODIC_IO_CANCEL:
+			mutex_lock(&lwis_client->lock);
 			ret = cmd_periodic_io_cancel(
 				lwis_client, &header,
 				(struct lwis_cmd_periodic_io_cancel __user *)user_msg);
+			mutex_unlock(&lwis_client->lock);
 			break;
 		case LWIS_CMD_ID_DPM_CLK_UPDATE:
+			mutex_lock(&lwis_client->lock);
 			ret = cmd_dpm_clk_update(lwis_dev, &header,
 						 (struct lwis_cmd_dpm_clk_update __user *)user_msg);
+			mutex_unlock(&lwis_client->lock);
 			break;
 		case LWIS_CMD_ID_DPM_QOS_UPDATE:
+			mutex_lock(&lwis_client->lock);
 			ret = cmd_dpm_qos_update(lwis_dev, &header,
 						 (struct lwis_cmd_dpm_qos_update __user *)user_msg);
+			mutex_unlock(&lwis_client->lock);
 			break;
 		case LWIS_CMD_ID_DPM_GET_CLOCK:
+			mutex_lock(&lwis_client->lock);
 			ret = cmd_dpm_get_clock(lwis_dev, &header,
 						(struct lwis_cmd_dpm_clk_get __user *)user_msg);
+			mutex_unlock(&lwis_client->lock);
 			break;
 #ifdef LWIS_FENCE_ENABLED
 		case LWIS_CMD_ID_FENCE_CREATE:
