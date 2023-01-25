@@ -1234,6 +1234,21 @@ void lwis_device_crash_info_dump(struct lwis_device *lwis_dev)
 	lwis_debug_print_event_states_info(lwis_dev, /*lwis_event_dump_cnt=*/dump_cnt);
 }
 
+void lwis_save_register_io_info(struct lwis_device *lwis_dev, struct lwis_io_entry *io_entry,
+				size_t access_size)
+{
+	lwis_dev->debug_info.io_entry_hist[lwis_dev->debug_info.cur_io_entry_hist_idx].io_entry =
+		*io_entry;
+	lwis_dev->debug_info.io_entry_hist[lwis_dev->debug_info.cur_io_entry_hist_idx].access_size =
+		access_size;
+	lwis_dev->debug_info.io_entry_hist[lwis_dev->debug_info.cur_io_entry_hist_idx]
+		.start_timestamp = ktime_to_ns(lwis_get_time());
+	lwis_dev->debug_info.cur_io_entry_hist_idx++;
+	if (lwis_dev->debug_info.cur_io_entry_hist_idx >= IO_ENTRY_DEBUG_HISTORY_SIZE) {
+		lwis_dev->debug_info.cur_io_entry_hist_idx = 0;
+	}
+}
+
 /*
  *  lwis_base_probe: Create a device instance for each of the LWIS device.
  */
