@@ -235,6 +235,7 @@ struct lwis_device {
 	struct dentry *dbg_event_file;
 	struct dentry *dbg_transaction_file;
 	struct dentry *dbg_buffer_file;
+	struct dentry *dbg_reg_io_file;
 #endif
 	/* Structure to store info to help debugging device data */
 	struct lwis_device_debug_info debug_info;
@@ -410,6 +411,13 @@ void lwis_device_info_dump(const char *name, void (*func)(struct lwis_device *))
  * when usersapce crash.
  */
 void lwis_device_crash_info_dump(struct lwis_device *lwis_dev);
+
+/*
+ * lwis_save_register_io_info: Saves the register io info in a history buffer
+ * for better debugability.
+ */
+void lwis_save_register_io_info(struct lwis_device *lwis_dev, struct lwis_io_entry *io_entry,
+                                size_t access_size);
 
 /*
  * lwis_process_worker_queue:
