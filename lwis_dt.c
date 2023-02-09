@@ -882,7 +882,8 @@ static void parse_bitwidths(struct lwis_device *lwis_dev)
 }
 
 static int parse_power_seqs(struct lwis_device *lwis_dev, const char *seq_name,
-			    struct lwis_device_power_sequence_list **list)
+			    struct lwis_device_power_sequence_list **list,
+			    struct device_node *dev_node_seq)
 {
 	char str_seq_name[LWIS_MAX_NAME_STRING_LEN];
 	char str_seq_type[LWIS_MAX_NAME_STRING_LEN];
@@ -907,6 +908,9 @@ static int parse_power_seqs(struct lwis_device *lwis_dev, const char *seq_name,
 	dev = &lwis_dev->plat_dev->dev;
 	dev_node = dev->of_node;
 	*list = NULL;
+	if (dev_node_seq) {
+		dev_node = dev_node_seq;
+	}
 
 	power_seq_count = of_property_count_strings(dev_node, str_seq_name);
 	power_seq_type_count = of_property_count_strings(dev_node, str_seq_type);
@@ -1058,6 +1062,49 @@ error_parse_power_seqs:
 	return ret;
 }
 
+static int parse_unified_power_seqs(struct lwis_device *lwis_dev)
+{
+	struct device *dev;
+	struct device_node *dev_node;
+	struct device_node *dev_node_seq;
+	int count;
+	int ret = 0;
+
+	dev = &lwis_dev->plat_dev->dev;
+	dev_node = dev->of_node;
+
+	count = of_property_count_elems_of_size(dev_node, "power-seq", sizeof(u32));
+
+	/* No power-seq found, or entry does not exist, just return */
+	if (count <= 0) {
+		lwis_dev->power_seq_handler = NULL;
+		return 0;
+	}
+
+	dev_node_seq = of_parse_phandle(dev_node, "power-seq", 0);
+	if (!dev_node_seq) {
+		pr_err("Can't get power-seq node\n");
+		return -EINVAL;
+	}
+
+	ret = parse_power_seqs(lwis_dev, "power-up", &lwis_dev->power_up_sequence, dev_node_seq);
+	if (ret) {
+		pr_err("Error parsing power-up-seqs\n");
+		return ret;
+	}
+
+	ret = parse_power_seqs(lwis_dev, "power-down", &lwis_dev->power_down_sequence,
+			       dev_node_seq);
+	if (ret) {
+		pr_err("Error parsing power-down-seqs\n");
+		return ret;
+	}
+
+	lwis_dev->power_seq_handler = dev_node_seq;
+
+	return ret;
+}
+
 static int parse_pm_hibernation(struct lwis_device *lwis_dev)
 {
 	struct device_node *dev_node;
@@ -1168,25 +1215,36 @@ int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 		return ret;
 	}
 
-	ret = parse_power_seqs(lwis_dev, "power-up", &lwis_dev->power_up_sequence);
+	ret = parse_unified_power_seqs(lwis_dev);
 	if (ret) {
-		pr_err("Error parsing power-up-seqs\n");
+		pr_err("Error parse_unified_power_seqs\n");
 		return ret;
 	}
 
-	ret = parse_power_seqs(lwis_dev, "power-down", &lwis_dev->power_down_sequence);
-	if (ret) {
-		pr_err("Error parsing power-down-seqs\n");
-		return ret;
+	if (lwis_dev->power_up_sequence == NULL) {
+		ret = parse_power_seqs(lwis_dev, "power-up", &lwis_dev->power_up_sequence, NULL);
+		if (ret) {
+			pr_err("Error parsing power-up-seqs\n");
+			return ret;
+		}
 	}
 
-	ret = parse_power_seqs(lwis_dev, "suspend", &lwis_dev->suspend_sequence);
+	if (lwis_dev->power_down_sequence == NULL) {
+		ret = parse_power_seqs(lwis_dev, "power-down", &lwis_dev->power_down_sequence,
+				       NULL);
+		if (ret) {
+			pr_err("Error parsing power-down-seqs\n");
+			return ret;
+		}
+	}
+
+	ret = parse_power_seqs(lwis_dev, "suspend", &lwis_dev->suspend_sequence, NULL);
 	if (ret) {
 		pr_err("Error parsing suspend-seqs\n");
 		return ret;
 	}
 
-	ret = parse_power_seqs(lwis_dev, "resume", &lwis_dev->resume_sequence);
+	ret = parse_power_seqs(lwis_dev, "resume", &lwis_dev->resume_sequence, NULL);
 	if (ret) {
 		pr_err("Error parsing resume-seqs\n");
 		return ret;
