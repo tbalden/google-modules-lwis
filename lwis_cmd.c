@@ -1342,14 +1342,18 @@ int lwis_ioctl_handle_cmd_pkt(struct lwis_client *lwis_client, struct lwis_cmd_p
 			mutex_unlock(&lwis_client->lock);
 			break;
 		case LWIS_CMD_ID_EVENT_CONTROL_GET:
+			mutex_lock(&lwis_client->lock);
 			ret = cmd_event_control_get(
 				lwis_client, &header,
 				(struct lwis_cmd_event_control_get __user *)user_msg);
+			mutex_unlock(&lwis_client->lock);
 			break;
 		case LWIS_CMD_ID_EVENT_CONTROL_SET:
+			mutex_lock(&lwis_client->lock);
 			ret = cmd_event_control_set(
 				lwis_client, &header,
 				(struct lwis_cmd_event_control_set __user *)user_msg);
+			mutex_unlock(&lwis_client->lock);
 			break;
 		case LWIS_CMD_ID_EVENT_DEQUEUE:
 			ret = cmd_event_dequeue(lwis_client, &header,
