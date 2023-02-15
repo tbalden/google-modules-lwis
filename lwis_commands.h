@@ -292,6 +292,7 @@ enum lwis_transaction_trigger_node_types {
 struct lwis_transaction_trigger_event {
 	int64_t id;
 	int64_t counter;
+	int32_t precondition_fence_fd;
 };
 
 struct lwis_transaction_trigger_node {
