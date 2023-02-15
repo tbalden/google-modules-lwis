@@ -40,6 +40,7 @@
 #include "lwis_transaction.h"
 #include "lwis_util.h"
 #include "lwis_version.h"
+#include "lwis_trace.h"
 
 #ifdef CONFIG_OF
 #include "lwis_dt.h"
@@ -406,7 +407,7 @@ int lwis_dev_process_power_sequence(struct lwis_device *lwis_dev,
 		dev_err(lwis_dev->dev, "No power_up_sequence defined\n");
 		return -EINVAL;
 	}
-
+	LWIS_ATRACE_FUNC_BEGIN(lwis_dev, "lwis_dev_process_power_sequence");
 	for (i = 0; i < list->count; ++i) {
 #ifdef LWIS_PWR_SEQ_DEBUG
 		dev_info(lwis_dev->dev, "%s: %d - type:%s name:%s delay_us:%d", __func__, i,
@@ -434,6 +435,8 @@ int lwis_dev_process_power_sequence(struct lwis_device *lwis_dev,
 			if (ret) {
 				dev_err(lwis_dev->dev, "Error set regulators (%d)\n", ret);
 				if (!skip_error) {
+					LWIS_ATRACE_FUNC_END(lwis_dev,
+							     "lwis_dev_process_power_sequence");
 					return ret;
 				}
 				last_error = ret;
@@ -450,6 +453,8 @@ int lwis_dev_process_power_sequence(struct lwis_device *lwis_dev,
 					list->seq_info[i].name);
 				ret = PTR_ERR(gpios_info);
 				if (!skip_error) {
+					LWIS_ATRACE_FUNC_END(lwis_dev,
+							     "lwis_dev_process_power_sequence");
 					return ret;
 				} else {
 					last_error = ret;
@@ -474,6 +479,9 @@ int lwis_dev_process_power_sequence(struct lwis_device *lwis_dev,
 						dev_err(lwis_dev->dev,
 							"Failed to obtain gpio list (%d)\n", ret);
 						if (!skip_error) {
+							LWIS_ATRACE_FUNC_END(
+								lwis_dev,
+								"lwis_dev_process_power_sequence");
 							return ret;
 						} else {
 							last_error = ret;
@@ -492,6 +500,9 @@ int lwis_dev_process_power_sequence(struct lwis_device *lwis_dev,
 						list->seq_info[i].name);
 					ret = -ENODEV;
 					if (!skip_error) {
+						LWIS_ATRACE_FUNC_END(
+							lwis_dev,
+							"lwis_dev_process_power_sequence");
 						return ret;
 					} else {
 						last_error = ret;
@@ -542,6 +553,9 @@ int lwis_dev_process_power_sequence(struct lwis_device *lwis_dev,
 				if (ret) {
 					dev_err(lwis_dev->dev, "Error set GPIO pins (%d)\n", ret);
 					if (!skip_error) {
+						LWIS_ATRACE_FUNC_END(
+							lwis_dev,
+							"lwis_dev_process_power_sequence");
 						return ret;
 					}
 					last_error = ret;
@@ -552,6 +566,8 @@ int lwis_dev_process_power_sequence(struct lwis_device *lwis_dev,
 			if (ret) {
 				dev_err(lwis_dev->dev, "Error set GPIO pins (%d)\n", ret);
 				if (!skip_error) {
+					LWIS_ATRACE_FUNC_END(lwis_dev,
+							     "lwis_dev_process_power_sequence");
 					return ret;
 				}
 				last_error = ret;
@@ -572,6 +588,9 @@ int lwis_dev_process_power_sequence(struct lwis_device *lwis_dev,
 					ret = PTR_ERR(lwis_dev->mclk_ctrl);
 					lwis_dev->mclk_ctrl = NULL;
 					if (!skip_error) {
+						LWIS_ATRACE_FUNC_END(
+							lwis_dev,
+							"lwis_dev_process_power_sequence");
 						return ret;
 					} else {
 						last_error = ret;
@@ -583,6 +602,9 @@ int lwis_dev_process_power_sequence(struct lwis_device *lwis_dev,
 					dev_err(lwis_dev->dev, "No pinctrl defined\n");
 					ret = -ENODEV;
 					if (!skip_error) {
+						LWIS_ATRACE_FUNC_END(
+							lwis_dev,
+							"lwis_dev_process_power_sequence");
 						return ret;
 					} else {
 						last_error = ret;
@@ -631,6 +653,9 @@ int lwis_dev_process_power_sequence(struct lwis_device *lwis_dev,
 						lwis_dev->mclk_ctrl = NULL;
 					}
 					if (!skip_error) {
+						LWIS_ATRACE_FUNC_END(
+							lwis_dev,
+							"lwis_dev_process_power_sequence");
 						return ret;
 					} else {
 						last_error = ret;
@@ -647,9 +672,10 @@ int lwis_dev_process_power_sequence(struct lwis_device *lwis_dev,
 	}
 
 	if (last_error) {
+		LWIS_ATRACE_FUNC_END(lwis_dev, "lwis_dev_process_power_sequence");
 		return last_error;
 	}
-
+	LWIS_ATRACE_FUNC_END(lwis_dev, "lwis_dev_process_power_sequence");
 	return ret;
 }
 

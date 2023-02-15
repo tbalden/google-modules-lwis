@@ -169,7 +169,6 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 	int64_t process_duration_ns = 0;
 	int64_t process_timestamp = ktime_to_ns(lwis_get_time());
 
-	LWIS_ATRACE_FUNC_BEGIN(lwis_dev);
 	resp_size = sizeof(struct lwis_transaction_response_header) + resp->results_size_bytes;
 	read_buf = (uint8_t *)resp + sizeof(struct lwis_transaction_response_header);
 	resp->completion_index = -1;
@@ -316,7 +315,7 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 	} else {
 		lwis_transaction_free(lwis_dev, transaction);
 	}
-	LWIS_ATRACE_FUNC_END(lwis_dev);
+
 	return ret;
 }
 
