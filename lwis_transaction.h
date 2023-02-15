@@ -45,6 +45,8 @@ struct lwis_transaction {
 	struct file *trigger_fence_fps[LWIS_TRIGGER_NODES_MAX_NUM];
 	/* Parameters for completion fences */
 	struct list_head completion_fence_list;
+	/* Precondition fence file pointer */
+	struct file *precondition_fence_fp;
 };
 
 /* For debugging purposes, keeps track of the transaction information, as
@@ -88,9 +90,8 @@ int lwis_transaction_submit_locked(struct lwis_client *client,
 int lwis_transaction_replace_locked(struct lwis_client *client,
 				    struct lwis_transaction *transaction);
 
-int lwis_trigger_event_add_weak_transaction(struct lwis_client *client,
-					    int64_t transaction_id,
-					    int64_t event_id);
+int lwis_trigger_event_add_weak_transaction(struct lwis_client *client, int64_t transaction_id,
+					    int64_t event_id, int32_t precondition_fence_fd);
 
 void lwis_process_transactions_in_queue(struct lwis_client *client);
 
