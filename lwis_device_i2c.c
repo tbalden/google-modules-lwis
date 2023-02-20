@@ -321,8 +321,8 @@ static int lwis_i2c_device_suspend(struct device *dev)
 	}
 
 	if (lwis_dev->pm_hibernation == 0) {
-		dev_warn(lwis_dev->dev, "Can't suspend because %s is in use!\n", lwis_dev->name);
-		return -EBUSY;
+		/* TODO(b/265688764): Cleaning up system deep sleep for flash driver. */
+		return 0;
 	}
 
 	/* Send an error event to userspace to handle the system suspend */
