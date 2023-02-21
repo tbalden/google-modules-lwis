@@ -327,12 +327,13 @@ static void lwis_interrupt_emit_events(struct lwis_interrupt *irq, uint64_t sour
 
 		/* Check if this event needs to be emitted */
 		if ((source_value >> event->int_reg_bit) & 0x1) {
-			int64_t event_id;
+			lwis_device_event_emit(irq->lwis_dev, event->event_id, NULL, 0);
 			/* Check if this overflow event needs to combine event id + overflow flag */
-			event_id = ((overflow_value >> event->int_reg_bit) & 0x1) ?
-					   (event->event_id | LWIS_OVERFLOW_IRQ_EVENT_FLAG) :
-					   event->event_id;
-			lwis_device_event_emit(irq->lwis_dev, event_id, NULL, 0);
+			if ((overflow_value >> event->int_reg_bit) & 0x1) {
+				lwis_device_event_emit(
+					irq->lwis_dev,
+					event->event_id | LWIS_OVERFLOW_IRQ_EVENT_FLAG, NULL, 0);
+			}
 
 			/* Clear this interrupt */
 			reset_value |= (1ULL << event->int_reg_bit);
