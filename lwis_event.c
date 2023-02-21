@@ -844,16 +844,8 @@ static int lwis_device_event_emit_impl(struct lwis_device *lwis_dev, int64_t eve
 		return -EINVAL;
 	}
 
-	/* When the event is overflow, we increase the event counter +2
-	 * so that userspace driver should be aware that at least
-	 * one interrupt was lost upon receiving an event with the overflow flag.
-	 */
-	if (event_id & LWIS_OVERFLOW_IRQ_EVENT_FLAG) {
-		device_event_state->event_counter += 2;
-	} else {
-		device_event_state->event_counter++;
-	}
-
+	/* Increment the event counter */
+	device_event_state->event_counter++;
 	/* Save event counter to local variable */
 	event_counter = device_event_state->event_counter;
 	/* Latch timestamp */

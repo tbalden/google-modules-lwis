@@ -872,6 +872,9 @@ int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
 
 	/* Find event list that matches the trigger event ID. */
 	spin_lock_irqsave(&client->transaction_lock, flags);
+	if (event_id & LWIS_OVERFLOW_IRQ_EVENT_FLAG) {
+		event_id = event_id ^ LWIS_OVERFLOW_IRQ_EVENT_FLAG;
+	}
 	event_list = event_list_find(client, event_id);
 	/* No event found, just return. */
 	if (event_list == NULL || list_empty(&event_list->list)) {
