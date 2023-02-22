@@ -228,7 +228,8 @@ int lwis_fence_create(struct lwis_device *lwis_dev)
 	}
 
 	/* Open a new fd for the new fence */
-	fd_or_err = anon_inode_getfd("lwis_fence_file", &fence_file_ops, new_fence, O_RDWR);
+	fd_or_err =
+		anon_inode_getfd("lwis_fence_file", &fence_file_ops, new_fence, O_RDWR | O_CLOEXEC);
 	if (fd_or_err < 0) {
 		kfree(new_fence);
 		dev_err(lwis_dev->dev, "Failed to create a new file instance for lwis_fence\n");
