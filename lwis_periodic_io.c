@@ -43,8 +43,8 @@ static enum hrtimer_restart periodic_io_timer_func(struct hrtimer *timer)
 	list_for_each_safe (it_period, it_period_tmp, &periodic_io_list->list) {
 		periodic_io = list_entry(it_period, struct lwis_periodic_io, timer_list_node);
 		if (periodic_io->active) {
-			periodic_io_proxy =
-				kmalloc(sizeof(struct lwis_periodic_io_proxy), GFP_NOWAIT);
+			periodic_io_proxy = lwis_allocator_allocate(
+				client->lwis_dev, sizeof(struct lwis_periodic_io_proxy));
 			if (!periodic_io_proxy) {
 				/* Non-fatal, skip this period */
 				pr_warn("Cannot allocate new periodic io proxy.\n");
@@ -325,7 +325,7 @@ void lwis_process_periodic_io_in_queue(struct lwis_client *client)
 			process_io_entries(client, periodic_io_proxy, &pending_events);
 			spin_lock_irqsave(&client->periodic_io_lock, flags);
 		}
-		kfree(periodic_io_proxy);
+		lwis_allocator_free(client->lwis_dev, periodic_io_proxy);
 	}
 	spin_unlock_irqrestore(&client->periodic_io_lock, flags);
 	lwis_pending_events_emit(client->lwis_dev, &pending_events);
