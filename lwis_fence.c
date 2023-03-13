@@ -239,6 +239,7 @@ int lwis_fence_create(struct lwis_device *lwis_dev)
 	new_fence->fd = fd_or_err;
 	new_fence->lwis_top_dev = lwis_dev->top_dev;
 	new_fence->status = LWIS_FENCE_STATUS_NOT_SIGNALED;
+	spin_lock_init(&new_fence->lock);
 	init_waitqueue_head(&new_fence->status_wait_queue);
 #ifdef LWIS_FENCE_ENABLED
 	if (lwis_fence_debug) {
