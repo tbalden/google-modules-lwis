@@ -1536,19 +1536,13 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type, unsig
 		ret = ioctl_time_query(lwis_client, (int64_t *)param);
 		break;
 	case LWIS_TRANSACTION_SUBMIT:
-		mutex_lock(&lwis_client->lock);
 		ret = ioctl_transaction_submit(lwis_client, (struct lwis_transaction_info *)param);
-		mutex_unlock(&lwis_client->lock);
 		break;
 	case LWIS_TRANSACTION_CANCEL:
-		mutex_lock(&lwis_client->lock);
 		ret = ioctl_transaction_cancel(lwis_client, (int64_t *)param);
-		mutex_unlock(&lwis_client->lock);
 		break;
 	case LWIS_TRANSACTION_REPLACE:
-		mutex_lock(&lwis_client->lock);
 		ret = ioctl_transaction_replace(lwis_client, (struct lwis_transaction_info *)param);
-		mutex_unlock(&lwis_client->lock);
 		break;
 	case LWIS_PERIODIC_IO_SUBMIT:
 		mutex_lock(&lwis_client->lock);
