@@ -134,9 +134,6 @@ int lwis_interrupt_get(struct lwis_interrupt_list *list, int index,
 		return -EINVAL;
 	}
 
-	spin_lock_irqsave(&list->irq[index].lock, flags);
-	list->irq[index].irq = irq;
-
 	if (list->irq[index].irq_type == AGGREGATE_INTERRUPT) {
 		ret = request_irq(irq, lwis_interrupt_aggregate_isr, IRQF_SHARED,
 				  list->irq[index].full_name, &list->irq[index]);
@@ -149,10 +146,13 @@ int lwis_interrupt_get(struct lwis_interrupt_list *list, int index,
 		return ret;
 	}
 
-	if (lwis_plaform_set_default_irq_affinity(list->irq[index].irq) != 0) {
+	if (lwis_plaform_set_default_irq_affinity(irq) != 0) {
 		dev_warn(list->lwis_dev->dev, "Interrupt %s cannot set affinity.\n",
 			 list->irq[index].full_name);
 	}
+
+	spin_lock_irqsave(&list->irq[index].lock, flags);
+	list->irq[index].irq = irq;
 	spin_unlock_irqrestore(&list->irq[index].lock, flags);
 
 	return 0;
