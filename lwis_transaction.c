@@ -168,6 +168,7 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 	const int reg_value_bytewidth = lwis_dev->native_value_bitwidth / 8;
 	int64_t process_duration_ns = 0;
 	int64_t process_timestamp = ktime_to_ns(lwis_get_time());
+	unsigned long flags;
 
 	resp_size = sizeof(struct lwis_transaction_response_header) + resp->results_size_bytes;
 	read_buf = (uint8_t *)resp + sizeof(struct lwis_transaction_response_header);
@@ -301,6 +302,8 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 				resp->error_code, transaction->info.id, i, entry->type);
 		}
 	}
+
+	spin_lock_irqsave(&client->transaction_lock, flags);
 	if (pending_fences) {
 		/* Convert -ECANCELED error code to userspace Cancellation error code */
 		pending_status = resp->error_code == -ECANCELED ? 1 : resp->error_code;
@@ -315,6 +318,7 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 	} else {
 		lwis_transaction_free(lwis_dev, transaction);
 	}
+	spin_unlock_irqrestore(&client->transaction_lock, flags);
 
 	return ret;
 }
