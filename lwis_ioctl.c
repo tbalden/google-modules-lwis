@@ -1102,6 +1102,30 @@ static int cmd_event_dequeue(struct lwis_client *lwis_client, struct lwis_cmd_pk
 	return copy_pkt_to_user(lwis_dev, u_msg, (void *)&info, sizeof(info));
 }
 
+static int cmd_fake_event_inject(struct lwis_client *lwis_client, struct lwis_cmd_pkt *header,
+				 struct lwis_cmd_pkt __user *u_msg)
+{
+	int ret = 0;
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+	struct lwis_interrupt_list *list = lwis_dev->irqs;
+	int rt_irq;
+
+	if (lwis_dev->type != DEVICE_TYPE_TEST || list->count != TEST_DEVICE_IRQ_CNT) {
+		return -EINVAL;
+	}
+
+	/* Fake Event Injection */
+	rt_irq = lwis_fake_event_inject(&list->irq[0]);
+	if (rt_irq != TEST_DEVICE_FAKE_INJECTION_IRQ) {
+		dev_err(lwis_dev->dev, "Error fake injection: rt_irq = %d, expect rt_irq = %d\n",
+			rt_irq, TEST_DEVICE_FAKE_INJECTION_IRQ);
+		ret = -1;
+	}
+
+	header->ret_code = ret;
+	return copy_pkt_to_user(lwis_dev, u_msg, (void *)header, sizeof(*header));
+}
+
 static int construct_transaction_from_cmd(struct lwis_client *client,
 					  struct lwis_cmd_transaction_info __user *u_msg,
 					  struct lwis_transaction **transaction)
@@ -1743,6 +1767,12 @@ static int handle_cmd_pkt(struct lwis_client *lwis_client, struct lwis_cmd_pkt *
 				       (struct lwis_cmd_fence_create __user *)user_msg);
 		break;
 #endif
+	case LWIS_CMD_ID_EVENT_INJECTION:
+		mutex_lock(&lwis_client->lock);
+		ret = cmd_fake_event_inject(lwis_client, header,
+					    (struct lwis_cmd_pkt __user *)user_msg);
+		mutex_unlock(&lwis_client->lock);
+		break;
 	default:
 		dev_err_ratelimited(lwis_dev->dev, "Unknown command id\n");
 		header->ret_code = -ENOSYS;
