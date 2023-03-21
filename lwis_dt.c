@@ -635,7 +635,12 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 	plat_dev = lwis_dev->plat_dev;
 	dev_node = plat_dev->dev.of_node;
 
-	count = platform_irq_count(plat_dev);
+	/* Test device type DEVICE_TYPE_TEST used for test, platform independent. */
+	if (lwis_dev->type == DEVICE_TYPE_TEST) {
+		count = TEST_DEVICE_IRQ_CNT;
+	} else {
+		count = platform_irq_count(plat_dev);
+	}
 
 	/* No interrupts found, just return */
 	if (count <= 0) {
@@ -645,7 +650,11 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 
 	lwis_dev->irqs = lwis_interrupt_list_alloc(lwis_dev, count);
 	if (IS_ERR(lwis_dev->irqs)) {
-		pr_err("Failed to allocate IRQ list\n");
+		if (lwis_dev->type == DEVICE_TYPE_TEST) {
+			pr_err("Failed to allocate injection\n");
+		} else {
+			pr_err("Failed to allocate IRQ list\n");
+		}
 		return PTR_ERR(lwis_dev->irqs);
 	}
 
@@ -749,6 +758,8 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 				irq_type = AGGREGATE_INTERRUPT;
 			} else if (strcmp(irq_type_str, "leaf") == 0) {
 				irq_type = LEAF_INTERRUPT;
+			} else if (strcmp(irq_type_str, "injection") == 0) {
+				irq_type = FAKEEVENT_INTERRUPT;
 			} else {
 				pr_err("Invalid irq-type from dt: %s\n", irq_type_str);
 				return ret;
@@ -767,6 +778,12 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 				pr_err("Cannot set irq %s\n", name);
 				goto error_event_infos;
 			}
+		} else if (irq_type == FAKEEVENT_INTERRUPT) {
+			/*
+			 * Hardcode the fake injection irq number to
+			 * TEST_DEVICE_FAKE_INJECTION_IRQ
+			 */
+			lwis_dev->irqs->irq[i].irq = TEST_DEVICE_FAKE_INJECTION_IRQ;
 		}
 
 		/* Parse event info */
