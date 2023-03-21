@@ -15,12 +15,19 @@
 #include "lwis_commands.h"
 #include "lwis_device.h"
 
+#define SCRATCH_TEST_DEV_MEMORY_SIZE 32
+
 /*
  *  struct lwis_test_device
  *  The device majorly control/handle requests from test clients.
  */
 struct lwis_test_device {
 	struct lwis_device base_dev;
+	/*
+	 * For testing purposes, scratch memory is used as register space in
+	 * test device.
+	 */
+	uint8_t scratch_mem[SCRATCH_TEST_DEV_MEMORY_SIZE];
 };
 
 int lwis_test_device_deinit(void);
