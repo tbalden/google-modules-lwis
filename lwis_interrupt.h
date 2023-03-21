@@ -186,4 +186,6 @@ int lwis_interrupt_event_enable(struct lwis_interrupt_list *list, int64_t event_
  */
 void lwis_interrupt_print(struct lwis_interrupt_list *list);
 
+int lwis_fake_event_inject(void *data);
+
 #endif /* LWIS_INTERRUPT_H_ */
