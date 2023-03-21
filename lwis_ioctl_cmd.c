@@ -9,7 +9,7 @@
  * published by the Free Software Foundation.
  */
 
-#include "lwis_cmd.h"
+#include "lwis_ioctl_cmd.h"
 
 #include <linux/kernel.h>
 #include <linux/slab.h>
