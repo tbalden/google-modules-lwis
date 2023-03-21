@@ -24,6 +24,7 @@
 #include "lwis_device_dpm.h"
 #include "lwis_device_i2c.h"
 #include "lwis_device_ioreg.h"
+#include "lwis_device_test.h"
 #include "lwis_event.h"
 #include "lwis_fence.h"
 #include "lwis_i2c.h"

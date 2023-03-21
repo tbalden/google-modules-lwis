@@ -16,6 +16,8 @@
 #include "lwis_device.h"
 
 #define SCRATCH_TEST_DEV_MEMORY_SIZE 32
+#define TEST_DEVICE_IRQ_CNT 1
+#define TEST_DEVICE_FAKE_INJECTION_IRQ 999
 
 /*
  *  struct lwis_test_device
