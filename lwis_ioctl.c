@@ -19,7 +19,6 @@
 
 #include "lwis_allocator.h"
 #include "lwis_buffer.h"
-#include "lwis_cmd.h"
 #include "lwis_commands.h"
 #include "lwis_device.h"
 #include "lwis_device_dpm.h"
@@ -29,6 +28,7 @@
 #include "lwis_fence.h"
 #include "lwis_i2c.h"
 #include "lwis_io_entry.h"
+#include "lwis_ioctl_cmd.h"
 #include "lwis_ioreg.h"
 #include "lwis_periodic_io.h"
 #include "lwis_platform.h"
