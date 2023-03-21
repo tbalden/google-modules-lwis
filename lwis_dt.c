@@ -1391,3 +1391,9 @@ int lwis_top_device_parse_dt(struct lwis_top_device *top_dev)
 	/* To be implemented */
 	return 0;
 }
+
+int lwis_test_device_parse_dt(struct lwis_test_device *test_dev)
+{
+	/* To be implemented */
+	return 0;
+}
