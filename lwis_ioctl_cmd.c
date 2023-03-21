@@ -1243,6 +1243,7 @@ int lwis_ioctl_handle_cmd_pkt(struct lwis_client *lwis_client, struct lwis_cmd_p
 	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
 	struct lwis_cmd_pkt header;
 	int ret = 0;
+	bool device_disabled;
 
 	while (user_msg) {
 		/* Copy cmd packet header from userspace */
@@ -1250,6 +1251,22 @@ int lwis_ioctl_handle_cmd_pkt(struct lwis_client *lwis_client, struct lwis_cmd_p
 			dev_err(lwis_dev->dev,
 				"Failed to copy cmd packet header from userspace.\n");
 			return -EFAULT;
+		}
+
+		mutex_lock(&lwis_dev->client_lock);
+		device_disabled = (lwis_dev->enabled == 0);
+		mutex_unlock(&lwis_dev->client_lock);
+		if (lwis_dev->type != DEVICE_TYPE_TOP && device_disabled &&
+		    (header.cmd_id == LWIS_CMD_ID_DMA_BUFFER_ALLOC ||
+		     header.cmd_id == LWIS_CMD_ID_REG_IO ||
+		     header.cmd_id == LWIS_CMD_ID_TRANSACTION_SUBMIT ||
+		     header.cmd_id == LWIS_CMD_ID_TRANSACTION_REPLACE ||
+		     header.cmd_id == LWIS_CMD_ID_PERIODIC_IO_SUBMIT)) {
+			dev_err_ratelimited(lwis_dev->dev,
+					    "Unsupported IOCTL on disabled device.\n");
+			header.ret_code = -EBADFD;
+			return copy_pkt_to_user(lwis_dev, user_msg, (void *)&header,
+						sizeof(header));
 		}
 
 		switch (header.cmd_id) {
