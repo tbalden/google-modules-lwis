@@ -575,38 +575,6 @@ struct lwis_cmd_fence_create {
  */
 
 #define LWIS_IOC_TYPE 'L'
-
-#define LWIS_GET_DEVICE_INFO _IOWR(LWIS_IOC_TYPE, 1, struct lwis_device_info)
-#define LWIS_BUFFER_ENROLL _IOWR(LWIS_IOC_TYPE, 2, struct lwis_buffer_info)
-#define LWIS_BUFFER_DISENROLL _IOWR(LWIS_IOC_TYPE, 3, struct lwis_enrolled_buffer_info)
-#define LWIS_BUFFER_CPU_ACCESS _IOWR(LWIS_IOC_TYPE, 4, struct lwis_buffer_cpu_access_op)
-#define LWIS_DEVICE_ENABLE _IO(LWIS_IOC_TYPE, 6)
-#define LWIS_DEVICE_DISABLE _IO(LWIS_IOC_TYPE, 7)
-#define LWIS_BUFFER_ALLOC _IOWR(LWIS_IOC_TYPE, 8, struct lwis_alloc_buffer_info)
-#define LWIS_BUFFER_FREE _IOWR(LWIS_IOC_TYPE, 9, int32_t)
-#define LWIS_TIME_QUERY _IOWR(LWIS_IOC_TYPE, 10, int64_t)
-#define LWIS_REG_IO _IOWR(LWIS_IOC_TYPE, 11, struct lwis_io_entries)
-#define LWIS_ECHO _IOWR(LWIS_IOC_TYPE, 12, struct lwis_echo)
-#define LWIS_DEVICE_RESET _IOWR(LWIS_IOC_TYPE, 13, struct lwis_io_entries)
-#define LWIS_DUMP_DEBUG_STATE _IO(LWIS_IOC_TYPE, 14)
-
-#define LWIS_EVENT_CONTROL_GET _IOWR(LWIS_IOC_TYPE, 20, struct lwis_event_control)
-#define LWIS_EVENT_CONTROL_SET _IOW(LWIS_IOC_TYPE, 21, struct lwis_event_control_list)
-#define LWIS_EVENT_DEQUEUE _IOWR(LWIS_IOC_TYPE, 22, struct lwis_event_info)
-
-#define LWIS_TRANSACTION_SUBMIT _IOWR(LWIS_IOC_TYPE, 30, struct lwis_transaction_info)
-#define LWIS_TRANSACTION_CANCEL _IOWR(LWIS_IOC_TYPE, 31, int64_t)
-#define LWIS_TRANSACTION_REPLACE _IOWR(LWIS_IOC_TYPE, 32, struct lwis_transaction_info)
-
-#define LWIS_PERIODIC_IO_SUBMIT _IOWR(LWIS_IOC_TYPE, 40, struct lwis_periodic_io_info)
-#define LWIS_PERIODIC_IO_CANCEL _IOWR(LWIS_IOC_TYPE, 41, int64_t)
-
-#define LWIS_DPM_CLK_UPDATE _IOW(LWIS_IOC_TYPE, 50, struct lwis_dpm_clk_settings)
-#define LWIS_DPM_QOS_UPDATE _IOW(LWIS_IOC_TYPE, 51, struct lwis_dpm_qos_requirements)
-#define LWIS_DPM_GET_CLOCK _IOW(LWIS_IOC_TYPE, 52, struct lwis_qos_setting)
-
-#define LWIS_FENCE_CREATE _IOWR(LWIS_IOC_TYPE, 60, int32_t)
-
 #define LWIS_CMD_PACKET _IOWR(LWIS_IOC_TYPE, 100, struct lwis_cmd_pkt)
 
 /*
