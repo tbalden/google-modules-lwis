@@ -260,7 +260,6 @@ static int lwis_release(struct inode *node, struct file *fp)
 	}
 
 	if (lwis_dev->enabled == 0) {
-#ifdef LWIS_BTS_BLOCK_NAME_ENABLED
 		for (i = 0; i < lwis_dev->bts_block_num; i++) {
 			if (lwis_dev->bts_indexes[i] != BTS_UNSUPPORTED) {
 				lwis_platform_update_bts(lwis_dev, i, /*bw_peak=*/0,
@@ -268,10 +267,6 @@ static int lwis_release(struct inode *node, struct file *fp)
 							 /*bw_rt=*/0);
 			}
 		}
-#else
-		lwis_platform_update_bts(lwis_dev, 0, /*bw_peak=*/0,
-					 /*bw_read=*/0, /*bw_write=*/0, /*bw_rt=*/0);
-#endif
 		/* remove voted qos */
 		lwis_platform_remove_qos(lwis_dev);
 		/* Release device event states if no more client is using */

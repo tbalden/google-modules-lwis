@@ -333,7 +333,6 @@ static int parse_clocks(struct lwis_device *lwis_dev)
 	ret = of_property_read_u32(dev_node, "clock-family", &clock_family);
 	lwis_dev->clock_family = (ret == 0) ? clock_family : CLOCK_FAMILY_INVALID;
 
-#ifdef LWIS_BTS_BLOCK_NAME_ENABLED
 	/* Parse the BTS block names */
 	bts_count = of_property_count_strings(dev_node, "bts-block-names");
 	if (bts_count > 0) {
@@ -351,7 +350,6 @@ static int parse_clocks(struct lwis_device *lwis_dev)
 	for (i = 0; i < MAX_BTS_BLOCK_NUM; ++i) {
 		lwis_dev->bts_indexes[i] = BTS_UNSUPPORTED;
 	}
-#endif
 
 #ifdef LWIS_DT_DEBUG
 	pr_info("%s: clock family %d", lwis_dev->name, lwis_dev->clock_family);
