@@ -417,9 +417,35 @@ struct lwis_qos_setting {
 #endif
 };
 
+struct lwis_qos_setting_v2 {
+	// Frequency in hz.
+	int64_t frequency_hz;
+	// Device id for this vote.
+	int32_t device_id;
+	// Target clock family.
+	int32_t clock_family;
+	// read BW
+	int64_t read_bw;
+	// write BW
+	int64_t write_bw;
+	// peak BW
+	int64_t peak_bw;
+	// RT BW (total peak)
+	int64_t rt_bw;
+	// Bts client name
+	char bts_block_name[LWIS_MAX_NAME_STRING_LEN];
+};
+
 struct lwis_dpm_qos_requirements {
 	// qos entities from user.
 	struct lwis_qos_setting *qos_settings;
+	// number of qos_settings.
+	size_t num_settings;
+};
+
+struct lwis_dpm_qos_requirements_v2 {
+	// qos entities from user.
+	struct lwis_qos_setting_v2 *qos_settings;
 	// number of qos_settings.
 	size_t num_settings;
 };
@@ -457,6 +483,7 @@ enum lwis_cmd_id {
 
 	LWIS_CMD_ID_DPM_CLK_UPDATE = 0x70000,
 	LWIS_CMD_ID_DPM_QOS_UPDATE = 0x70100,
+	LWIS_CMD_ID_DPM_QOS_UPDATE_V2,
 	LWIS_CMD_ID_DPM_GET_CLOCK = 0x70200,
 
 	LWIS_CMD_ID_FENCE_CREATE = 0x80000
@@ -556,6 +583,11 @@ struct lwis_cmd_dpm_clk_update {
 struct lwis_cmd_dpm_qos_update {
 	struct lwis_cmd_pkt header;
 	struct lwis_dpm_qos_requirements reqs;
+};
+
+struct lwis_cmd_dpm_qos_update_v2 {
+	struct lwis_cmd_pkt header;
+	struct lwis_dpm_qos_requirements_v2 reqs;
 };
 
 struct lwis_cmd_dpm_clk_get {
