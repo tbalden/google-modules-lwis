@@ -34,6 +34,7 @@
 #include "lwis_regulator.h"
 #include "lwis_transaction.h"
 #include "lwis_util.h"
+#include "lwis_i2c_bus_manager.h"
 
 #define IOCTL_TO_ENUM(x) _IOC_NR(x)
 #define IOCTL_ARG_SIZE(x) _IOC_SIZE(x)
@@ -187,6 +188,7 @@ static int synchronous_process_io_entries(struct lwis_device *lwis_dev, int num_
 {
 	int ret = 0, i = 0;
 
+	lwis_i2c_bus_manager_lock_i2c_bus(lwis_dev);
 	/* Use write memory barrier at the beginning of I/O entries if the access protocol
 	 * allows it */
 	if (lwis_dev->vops.register_io_barrier != NULL) {
@@ -230,6 +232,7 @@ exit:
 						   /*use_read_barrier=*/true,
 						   /*use_write_barrier=*/false);
 	}
+	lwis_i2c_bus_manager_unlock_i2c_bus(lwis_dev);
 	return ret;
 }
 
