@@ -41,7 +41,6 @@
 #include "lwis_util.h"
 #include "lwis_version.h"
 #include "lwis_trace.h"
-#include "lwis_i2c_bus_manager.h"
 
 #ifdef CONFIG_OF
 #include "lwis_dt.h"
@@ -83,13 +82,6 @@ static void transaction_work_func(struct kthread_work *work)
 {
 	struct lwis_client *client = container_of(work, struct lwis_client, transaction_work);
 	lwis_process_worker_queue(client);
-}
-
-static void i2c_process_work_func(struct kthread_work *work)
-{
-	/* i2c_work stores the context of the lwis_client submitting the transfer request */
-	struct lwis_client *client = container_of(work, struct lwis_client, i2c_work);
-	lwis_i2c_bus_manager_process_worker_queue(client);
 }
 
 /*
@@ -143,7 +135,6 @@ static int lwis_open(struct inode *node, struct file *fp)
 	lwis_allocator_init(lwis_dev);
 
 	kthread_init_work(&lwis_client->transaction_work, transaction_work_func);
-	kthread_init_work(&lwis_client->i2c_work, i2c_process_work_func);
 
 	/* Start transaction processor task */
 	lwis_transaction_init(lwis_client);
@@ -235,7 +226,6 @@ static int lwis_release_client(struct lwis_client *lwis_client)
 	spin_unlock_irqrestore(&lwis_dev->lock, flags);
 
 	kfree(lwis_client);
-
 	return 0;
 }
 
@@ -1598,10 +1588,6 @@ void lwis_base_unprobe(struct lwis_device *unprobe_lwis_dev)
 						   &lwis_dev->plat_dev->dev);
 				lwis_dev->irq_gpios_info.gpios = NULL;
 			}
-
-			/* Disconnect from the bus manager */
-			lwis_i2c_bus_manager_disconnect(lwis_dev);
-
 			/* Destroy device */
 			if (!IS_ERR_OR_NULL(lwis_dev->dev)) {
 				device_destroy(core.dev_class,
