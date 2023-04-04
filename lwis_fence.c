@@ -39,6 +39,16 @@ static const struct file_operations fence_file_ops = {
 	.poll = lwis_fence_poll,
 };
 
+static int get_fence_status(struct lwis_fence *lwis_fence)
+{
+	int status;
+	unsigned long flags;
+	spin_lock_irqsave(&lwis_fence->lock, flags);
+	status = lwis_fence->status;
+	spin_unlock_irqrestore(&lwis_fence->lock, flags);
+	return status;
+}
+
 /*
  *  lwis_fence_release: Closing an instance of a LWIS fence
  */
@@ -91,7 +101,6 @@ static int lwis_fence_release(struct inode *node, struct file *fp)
 static ssize_t lwis_fence_get_status(struct file *fp, char __user *user_buffer, size_t len,
 				     loff_t *offset)
 {
-	unsigned long flags;
 	int status = 0;
 	struct lwis_fence *lwis_fence = fp->private_data;
 	int max_len, read_len;
@@ -106,10 +115,7 @@ static ssize_t lwis_fence_get_status(struct file *fp, char __user *user_buffer, 
 		len = max_len;
 	}
 
-	spin_lock_irqsave(&lwis_fence->lock, flags);
-	status = lwis_fence->status;
-	spin_unlock_irqrestore(&lwis_fence->lock, flags);
-
+	status = get_fence_status(lwis_fence);
 	read_len = len - copy_to_user((void __user *)user_buffer, (void *)&status + *offset, len);
 
 	return read_len;
@@ -222,7 +228,8 @@ int lwis_fence_create(struct lwis_device *lwis_dev)
 	}
 
 	/* Open a new fd for the new fence */
-	fd_or_err = anon_inode_getfd("lwis_fence_file", &fence_file_ops, new_fence, O_RDWR);
+	fd_or_err =
+		anon_inode_getfd("lwis_fence_file", &fence_file_ops, new_fence, O_RDWR | O_CLOEXEC);
 	if (fd_or_err < 0) {
 		kfree(new_fence);
 		dev_err(lwis_dev->dev, "Failed to create a new file instance for lwis_fence\n");
@@ -232,6 +239,7 @@ int lwis_fence_create(struct lwis_device *lwis_dev)
 	new_fence->fd = fd_or_err;
 	new_fence->lwis_top_dev = lwis_dev->top_dev;
 	new_fence->status = LWIS_FENCE_STATUS_NOT_SIGNALED;
+	spin_lock_init(&new_fence->lock);
 	init_waitqueue_head(&new_fence->status_wait_queue);
 #ifdef LWIS_FENCE_ENABLED
 	if (lwis_fence_debug) {
@@ -369,20 +377,60 @@ bool lwis_event_triggered_condition_ready(struct lwis_transaction *transaction,
 	size_t all_signaled;
 	struct lwis_transaction_info *info = &transaction->info;
 	int i;
+	struct lwis_fence *lwis_fence;
+	bool is_node_signaled = false;
 
 	operator_type = info->trigger_condition.operator_type;
 	all_signaled = info->trigger_condition.num_nodes;
 
+	/*
+	 * Three scenarios to consider a node signaled:
+	 * 1) Event ID and event counter match,
+	 * 2) Event ID match, event counter not specified but precondition fence signaled, or,
+	 * 3) Event ID match, event counter and precondition fence not specified.
+	 */
 	for (i = 0; i < info->trigger_condition.num_nodes; i++) {
+		is_node_signaled = false;
 		if (info->trigger_condition.trigger_nodes[i].type == LWIS_TRIGGER_EVENT &&
-		    info->trigger_condition.trigger_nodes[i].event.id == event_id &&
-		    (info->trigger_condition.trigger_nodes[i].event.counter == event_counter ||
-		     info->trigger_condition.trigger_nodes[i].event.counter ==
-			     LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE)) {
-			transaction->signaled_count++;
-			list_del(&weak_transaction->event_list_node);
-			kfree(weak_transaction);
-			break;
+		    info->trigger_condition.trigger_nodes[i].event.id == event_id) {
+			if (info->trigger_condition.trigger_nodes[i].event.counter ==
+				    event_counter ||
+			    (info->trigger_condition.trigger_nodes[i].event.counter ==
+				     LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE &&
+			     weak_transaction->precondition_fence_fp == NULL)) {
+				is_node_signaled = true;
+			} else if (info->trigger_condition.trigger_nodes[i].event.counter ==
+				   LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE) {
+				lwis_fence = weak_transaction->precondition_fence_fp->private_data;
+				if (lwis_fence != NULL && get_fence_status(lwis_fence) == 0) {
+					is_node_signaled = true;
+					if (lwis_fence_debug) {
+						pr_info("TransactionId %lld: event 0x%llx (%lld), precondition fence %d signaled",
+							info->id, event_id, event_counter,
+							info->trigger_condition.trigger_nodes[i]
+								.event.precondition_fence_fd);
+					}
+				} else {
+					if (lwis_fence_debug) {
+						pr_info("TransactionId %lld: event 0x%llx (%lld), precondition fence %d NOT signaled yet",
+							info->id, event_id, event_counter,
+							info->trigger_condition.trigger_nodes[i]
+								.event.precondition_fence_fd);
+					}
+				}
+			}
+
+			if (is_node_signaled) {
+				transaction->signaled_count++;
+				list_del(&weak_transaction->event_list_node);
+				if (weak_transaction->precondition_fence_fp) {
+					fput(weak_transaction->precondition_fence_fp);
+				}
+				kfree(weak_transaction);
+				/* The break here assumes that this event ID only appears once in
+				   the trigger expression. Might need to revisit this. */
+				break;
+			}
 		}
 	}
 
@@ -403,8 +451,7 @@ bool lwis_event_triggered_condition_ready(struct lwis_transaction *transaction,
 	return false;
 }
 
-bool lwis_fence_triggered_condition_ready(struct lwis_transaction *transaction,
-					  int fence_status)
+bool lwis_fence_triggered_condition_ready(struct lwis_transaction *transaction, int fence_status)
 {
 	int32_t operator_type;
 	size_t all_signaled;
@@ -457,8 +504,9 @@ int lwis_parse_trigger_condition(struct lwis_client *client, struct lwis_transac
 	for (i = 0; i < info->trigger_condition.num_nodes; i++) {
 		if (info->trigger_condition.trigger_nodes[i].type == LWIS_TRIGGER_EVENT) {
 			ret = lwis_trigger_event_add_weak_transaction(
-				client, info->id,
-				info->trigger_condition.trigger_nodes[i].event.id);
+				client, info->id, info->trigger_condition.trigger_nodes[i].event.id,
+				info->trigger_condition.trigger_nodes[i]
+					.event.precondition_fence_fd);
 		} else {
 			ret = lwis_trigger_fence_add_transaction(
 				info->trigger_condition.trigger_nodes[i].fence_fd, client,

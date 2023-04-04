@@ -333,7 +333,6 @@ static int parse_clocks(struct lwis_device *lwis_dev)
 	ret = of_property_read_u32(dev_node, "clock-family", &clock_family);
 	lwis_dev->clock_family = (ret == 0) ? clock_family : CLOCK_FAMILY_INVALID;
 
-#ifdef LWIS_BTS_BLOCK_NAME_ENABLED
 	/* Parse the BTS block names */
 	bts_count = of_property_count_strings(dev_node, "bts-block-names");
 	if (bts_count > 0) {
@@ -351,7 +350,6 @@ static int parse_clocks(struct lwis_device *lwis_dev)
 	for (i = 0; i < MAX_BTS_BLOCK_NUM; ++i) {
 		lwis_dev->bts_indexes[i] = BTS_UNSUPPORTED;
 	}
-#endif
 
 #ifdef LWIS_DT_DEBUG
 	pr_info("%s: clock family %d", lwis_dev->name, lwis_dev->clock_family);
@@ -637,7 +635,12 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 	plat_dev = lwis_dev->plat_dev;
 	dev_node = plat_dev->dev.of_node;
 
-	count = platform_irq_count(plat_dev);
+	/* Test device type DEVICE_TYPE_TEST used for test, platform independent. */
+	if (lwis_dev->type == DEVICE_TYPE_TEST) {
+		count = TEST_DEVICE_IRQ_CNT;
+	} else {
+		count = platform_irq_count(plat_dev);
+	}
 
 	/* No interrupts found, just return */
 	if (count <= 0) {
@@ -647,7 +650,11 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 
 	lwis_dev->irqs = lwis_interrupt_list_alloc(lwis_dev, count);
 	if (IS_ERR(lwis_dev->irqs)) {
-		pr_err("Failed to allocate IRQ list\n");
+		if (lwis_dev->type == DEVICE_TYPE_TEST) {
+			pr_err("Failed to allocate injection\n");
+		} else {
+			pr_err("Failed to allocate IRQ list\n");
+		}
 		return PTR_ERR(lwis_dev->irqs);
 	}
 
@@ -751,6 +758,8 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 				irq_type = AGGREGATE_INTERRUPT;
 			} else if (strcmp(irq_type_str, "leaf") == 0) {
 				irq_type = LEAF_INTERRUPT;
+			} else if (strcmp(irq_type_str, "injection") == 0) {
+				irq_type = FAKEEVENT_INTERRUPT;
 			} else {
 				pr_err("Invalid irq-type from dt: %s\n", irq_type_str);
 				return ret;
@@ -769,6 +778,12 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 				pr_err("Cannot set irq %s\n", name);
 				goto error_event_infos;
 			}
+		} else if (irq_type == FAKEEVENT_INTERRUPT) {
+			/*
+			 * Hardcode the fake injection irq number to
+			 * TEST_DEVICE_FAKE_INJECTION_IRQ
+			 */
+			lwis_dev->irqs->irq[i].irq = TEST_DEVICE_FAKE_INJECTION_IRQ;
 		}
 
 		/* Parse event info */
@@ -882,7 +897,8 @@ static void parse_bitwidths(struct lwis_device *lwis_dev)
 }
 
 static int parse_power_seqs(struct lwis_device *lwis_dev, const char *seq_name,
-			    struct lwis_device_power_sequence_list **list)
+			    struct lwis_device_power_sequence_list **list,
+			    struct device_node *dev_node_seq)
 {
 	char str_seq_name[LWIS_MAX_NAME_STRING_LEN];
 	char str_seq_type[LWIS_MAX_NAME_STRING_LEN];
@@ -907,6 +923,9 @@ static int parse_power_seqs(struct lwis_device *lwis_dev, const char *seq_name,
 	dev = &lwis_dev->plat_dev->dev;
 	dev_node = dev->of_node;
 	*list = NULL;
+	if (dev_node_seq) {
+		dev_node = dev_node_seq;
+	}
 
 	power_seq_count = of_property_count_strings(dev_node, str_seq_name);
 	power_seq_type_count = of_property_count_strings(dev_node, str_seq_type);
@@ -1058,6 +1077,49 @@ error_parse_power_seqs:
 	return ret;
 }
 
+static int parse_unified_power_seqs(struct lwis_device *lwis_dev)
+{
+	struct device *dev;
+	struct device_node *dev_node;
+	struct device_node *dev_node_seq;
+	int count;
+	int ret = 0;
+
+	dev = &lwis_dev->plat_dev->dev;
+	dev_node = dev->of_node;
+
+	count = of_property_count_elems_of_size(dev_node, "power-seq", sizeof(u32));
+
+	/* No power-seq found, or entry does not exist, just return */
+	if (count <= 0) {
+		lwis_dev->power_seq_handler = NULL;
+		return 0;
+	}
+
+	dev_node_seq = of_parse_phandle(dev_node, "power-seq", 0);
+	if (!dev_node_seq) {
+		pr_err("Can't get power-seq node\n");
+		return -EINVAL;
+	}
+
+	ret = parse_power_seqs(lwis_dev, "power-up", &lwis_dev->power_up_sequence, dev_node_seq);
+	if (ret) {
+		pr_err("Error parsing power-up-seqs\n");
+		return ret;
+	}
+
+	ret = parse_power_seqs(lwis_dev, "power-down", &lwis_dev->power_down_sequence,
+			       dev_node_seq);
+	if (ret) {
+		pr_err("Error parsing power-down-seqs\n");
+		return ret;
+	}
+
+	lwis_dev->power_seq_handler = dev_node_seq;
+
+	return ret;
+}
+
 static int parse_pm_hibernation(struct lwis_device *lwis_dev)
 {
 	struct device_node *dev_node;
@@ -1168,25 +1230,36 @@ int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 		return ret;
 	}
 
-	ret = parse_power_seqs(lwis_dev, "power-up", &lwis_dev->power_up_sequence);
+	ret = parse_unified_power_seqs(lwis_dev);
 	if (ret) {
-		pr_err("Error parsing power-up-seqs\n");
+		pr_err("Error parse_unified_power_seqs\n");
 		return ret;
 	}
 
-	ret = parse_power_seqs(lwis_dev, "power-down", &lwis_dev->power_down_sequence);
-	if (ret) {
-		pr_err("Error parsing power-down-seqs\n");
-		return ret;
+	if (lwis_dev->power_up_sequence == NULL) {
+		ret = parse_power_seqs(lwis_dev, "power-up", &lwis_dev->power_up_sequence, NULL);
+		if (ret) {
+			pr_err("Error parsing power-up-seqs\n");
+			return ret;
+		}
 	}
 
-	ret = parse_power_seqs(lwis_dev, "suspend", &lwis_dev->suspend_sequence);
+	if (lwis_dev->power_down_sequence == NULL) {
+		ret = parse_power_seqs(lwis_dev, "power-down", &lwis_dev->power_down_sequence,
+				       NULL);
+		if (ret) {
+			pr_err("Error parsing power-down-seqs\n");
+			return ret;
+		}
+	}
+
+	ret = parse_power_seqs(lwis_dev, "suspend", &lwis_dev->suspend_sequence, NULL);
 	if (ret) {
 		pr_err("Error parsing suspend-seqs\n");
 		return ret;
 	}
 
-	ret = parse_power_seqs(lwis_dev, "resume", &lwis_dev->resume_sequence);
+	ret = parse_power_seqs(lwis_dev, "resume", &lwis_dev->resume_sequence, NULL);
 	if (ret) {
 		pr_err("Error parsing resume-seqs\n");
 		return ret;
@@ -1329,6 +1402,12 @@ error_ioreg:
 }
 
 int lwis_top_device_parse_dt(struct lwis_top_device *top_dev)
+{
+	/* To be implemented */
+	return 0;
+}
+
+int lwis_test_device_parse_dt(struct lwis_test_device *test_dev)
 {
 	/* To be implemented */
 	return 0;

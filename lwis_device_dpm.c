@@ -38,9 +38,8 @@ static struct lwis_event_subscribe_operations dpm_subscribe_ops = {
 	.release = NULL,
 };
 
-#ifdef LWIS_BTS_BLOCK_NAME_ENABLED
 static int find_bts_block(struct lwis_device *lwis_dev, struct lwis_device *target_dev,
-			struct lwis_qos_setting *qos_setting)
+			struct lwis_qos_setting_v2 *qos_setting)
 {
 	int i;
 
@@ -64,12 +63,11 @@ static int find_bts_block(struct lwis_device *lwis_dev, struct lwis_device *targ
 		return -EINVAL;
 	}
 }
-#endif
 
 /*
  *  lwis_dpm_update_qos: update qos requirement for lwis device.
  */
-int lwis_dpm_update_qos(struct lwis_device *lwis_dev, struct lwis_qos_setting *qos_setting)
+int lwis_dpm_update_qos(struct lwis_device *lwis_dev, struct lwis_qos_setting_v2 *qos_setting)
 {
 	int ret = 0, bts_block = -1;
 	int64_t peak_bw = 0;
@@ -106,14 +104,10 @@ int lwis_dpm_update_qos(struct lwis_device *lwis_dev, struct lwis_qos_setting *q
 					qos_setting->clock_family);
 			}
 		} else {
-#ifdef LWIS_BTS_BLOCK_NAME_ENABLED
 			bts_block = find_bts_block(lwis_dev, target_dev, qos_setting);
 			if (bts_block < 0) {
 				return bts_block;
 			}
-#else
-			bts_block = 0;
-#endif
 
 			read_bw = qos_setting->read_bw;
 			write_bw = qos_setting->write_bw;
