@@ -99,10 +99,17 @@ static void list_transactions(struct lwis_client *client, char *k_buf, size_t k_
 				  trans_hist->info.emit_success_event_id,
 				  trans_hist->info.emit_error_event_id);
 			strlcat(k_buf, tmp_buf, k_buf_size);
-			scnprintf(tmp_buf, sizeof(tmp_buf),
-				  "     Num Entries: %zu Processed @ %lld for %lldns\n",
-				  trans_hist->info.num_io_entries, trans_hist->process_timestamp,
-				  trans_hist->process_duration_ns);
+			/* Process timestamp not recorded */
+			if (trans_hist->process_timestamp == -1) {
+				scnprintf(tmp_buf, sizeof(tmp_buf), "     Num Entries: %zu\n",
+					  trans_hist->info.num_io_entries);
+			} else {
+				scnprintf(tmp_buf, sizeof(tmp_buf),
+					  "     Num Entries: %zu Processed @ %lld for %lldns\n",
+					  trans_hist->info.num_io_entries,
+					  trans_hist->process_timestamp,
+					  trans_hist->process_duration_ns);
+			}
 			strlcat(k_buf, tmp_buf, k_buf_size);
 		}
 		hist_idx++;

@@ -34,6 +34,9 @@
 #define EXPLICIT_EVENT_COUNTER(x)                                                                  \
 	((x) != LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE && (x) != LWIS_EVENT_COUNTER_EVERY_TIME)
 
+bool lwis_transaction_debug;
+module_param(lwis_transaction_debug, bool, 0644);
+
 static struct lwis_transaction_event_list *event_list_find(struct lwis_client *client,
 							   int64_t event_id)
 {
@@ -166,9 +169,13 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 	uint8_t *read_buf;
 	struct lwis_io_result *io_result;
 	const int reg_value_bytewidth = lwis_dev->native_value_bitwidth / 8;
-	int64_t process_duration_ns = 0;
-	int64_t process_timestamp = ktime_to_ns(lwis_get_time());
+	int64_t process_duration_ns = -1;
+	int64_t process_timestamp = -1;
 	unsigned long flags;
+
+	if (lwis_transaction_debug) {
+		process_timestamp = ktime_to_ns(lwis_get_time());
+	}
 
 	resp_size = sizeof(struct lwis_transaction_response_header) + resp->results_size_bytes;
 	read_buf = (uint8_t *)resp + sizeof(struct lwis_transaction_response_header);
@@ -281,7 +288,9 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 		resp->completion_index = i;
 	}
 
-	process_duration_ns = ktime_to_ns(lwis_get_time() - process_timestamp);
+	if (lwis_transaction_debug) {
+		process_duration_ns = ktime_to_ns(lwis_get_time() - process_timestamp);
+	}
 
 	/* Use read memory barrier at the end of I/O entries if the access protocol
 	 * allows it */
