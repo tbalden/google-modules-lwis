@@ -411,10 +411,6 @@ struct lwis_qos_setting {
 	int64_t peak_bw;
 	// RT BW (total peak)
 	int64_t rt_bw;
-#ifdef LWIS_BTS_BLOCK_NAME_ENABLED
-	// Bts client name
-	char bts_block_name[LWIS_MAX_NAME_STRING_LEN];
-#endif
 };
 
 struct lwis_qos_setting_v2 {
