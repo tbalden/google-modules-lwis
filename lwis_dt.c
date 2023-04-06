@@ -141,8 +141,8 @@ static int parse_irq_gpios(struct lwis_device *lwis_dev)
 		goto error_parse_irq_gpios;
 	}
 
-	type_count = of_property_read_variable_u32_array(
-		dev_node, "irq-gpios-types", irq_gpios_types, type_count, type_count);
+	type_count = of_property_read_variable_u32_array(dev_node, "irq-gpios-types",
+							 irq_gpios_types, type_count, type_count);
 
 	if (type_count != count) {
 		pr_err("Error getting irq-gpios-types: %d\n", type_count);

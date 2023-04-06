@@ -426,7 +426,7 @@ void lwis_device_crash_info_dump(struct lwis_device *lwis_dev);
  * for better debugability.
  */
 void lwis_save_register_io_info(struct lwis_device *lwis_dev, struct lwis_io_entry *io_entry,
-                                size_t access_size);
+				size_t access_size);
 
 /*
  * lwis_process_worker_queue:

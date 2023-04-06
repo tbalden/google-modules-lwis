@@ -1436,11 +1436,13 @@ static int cmd_dpm_qos_update(struct lwis_device *lwis_dev, struct lwis_cmd_pkt 
 	for (i = 0; i < k_msg.reqs.num_settings; i++) {
 		if (sizeof(struct lwis_qos_setting) != sizeof(struct lwis_qos_setting_v2)) {
 			struct lwis_qos_setting_v2 k_qos_setting_v2;
-			memcpy(&k_qos_setting_v2, &k_qos_settings[i], sizeof(struct lwis_qos_setting));
+			memcpy(&k_qos_setting_v2, &k_qos_settings[i],
+			       sizeof(struct lwis_qos_setting));
 			k_qos_setting_v2.bts_block_name[0] = '\0';
 			ret = lwis_dpm_update_qos(lwis_dev, &k_qos_setting_v2);
 		} else {
-			ret = lwis_dpm_update_qos(lwis_dev, (struct lwis_qos_setting_v2 *)&k_qos_settings[i]);
+			ret = lwis_dpm_update_qos(lwis_dev,
+						  (struct lwis_qos_setting_v2 *)&k_qos_settings[i]);
 		}
 		if (ret) {
 			dev_err(lwis_dev->dev, "Failed to apply qos setting, ret: %d\n", ret);
@@ -1455,7 +1457,7 @@ exit:
 }
 
 static int cmd_dpm_qos_update_v2(struct lwis_device *lwis_dev, struct lwis_cmd_pkt *header,
-			      struct lwis_cmd_dpm_qos_update_v2 __user *u_msg)
+				 struct lwis_cmd_dpm_qos_update_v2 __user *u_msg)
 {
 	struct lwis_cmd_dpm_qos_update_v2 k_msg;
 	struct lwis_qos_setting_v2 *k_qos_settings;

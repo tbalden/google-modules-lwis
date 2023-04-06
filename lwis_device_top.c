@@ -512,20 +512,18 @@ static int lwis_top_device_probe(struct platform_device *plat_dev)
 	lwis_top_event_subscribe_init(top_dev);
 
 	kthread_init_worker(&top_dev->subscribe_worker);
-	top_dev->subscribe_worker_thread = kthread_run(kthread_worker_fn,
-			&top_dev->subscribe_worker, LWIS_SUBSCRIBER_THREAD_NAME);
+	top_dev->subscribe_worker_thread = kthread_run(
+		kthread_worker_fn, &top_dev->subscribe_worker, LWIS_SUBSCRIBER_THREAD_NAME);
 	if (IS_ERR(top_dev->subscribe_worker_thread)) {
 		dev_err(top_dev->base_dev.dev, "subscribe kthread_run failed\n");
 		goto error_probe;
 	}
 
-	ret = lwis_set_kthread_priority(&top_dev->base_dev,
-		top_dev->subscribe_worker_thread,
-		SUBSCRIBE_THREAD_PRIORITY);
+	ret = lwis_set_kthread_priority(&top_dev->base_dev, top_dev->subscribe_worker_thread,
+					SUBSCRIBE_THREAD_PRIORITY);
 	if (ret) {
 		dev_err(top_dev->base_dev.dev,
-		"Failed to set LWIS top subscription kthread priority (%d)",
-			ret);
+			"Failed to set LWIS top subscription kthread priority (%d)", ret);
 		lwis_base_unprobe(&top_dev->base_dev);
 		goto error_probe;
 	}
