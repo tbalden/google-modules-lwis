@@ -76,13 +76,11 @@ static void add_pending_transaction(struct lwis_client *client,
 {
 	hash_add(client->pending_transactions, &transaction->pending_map_node,
 		 transaction->info.id);
-#ifdef LWIS_FENCE_ENABLED
 	if (lwis_fence_debug) {
 		dev_info(client->lwis_dev->dev,
 			 "lwis_fence add transaction id %llu to lwis_client pending map",
 			 transaction->info.id);
 	}
-#endif
 }
 
 static struct lwis_transaction *pending_transaction_peek(struct lwis_client *client,
@@ -100,7 +98,7 @@ static struct lwis_transaction *pending_transaction_peek(struct lwis_client *cli
 }
 
 static void save_transaction_to_history(struct lwis_client *client,
-					struct lwis_transaction_info *trans_info,
+					struct lwis_transaction_info_v2 *trans_info,
 					int64_t process_timestamp, int64_t process_duration_ns)
 {
 	client->debug_info.transaction_hist[client->debug_info.cur_transaction_hist_idx].info =
@@ -163,7 +161,7 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 	int pending_status;
 	struct lwis_io_entry *entry = NULL;
 	struct lwis_device *lwis_dev = client->lwis_dev;
-	struct lwis_transaction_info *info = &transaction->info;
+	struct lwis_transaction_info_v2 *info = &transaction->info;
 	struct lwis_transaction_response_header *resp = transaction->resp;
 	size_t resp_size;
 	uint8_t *read_buf;
@@ -337,7 +335,7 @@ static void cancel_transaction(struct lwis_device *lwis_dev, struct lwis_transac
 			       struct list_head *pending_fences)
 {
 	int pending_status;
-	struct lwis_transaction_info *info = &transaction->info;
+	struct lwis_transaction_info_v2 *info = &transaction->info;
 	struct lwis_transaction_response_header resp;
 	resp.id = info->id;
 	resp.error_code = error_code;
@@ -611,14 +609,12 @@ int lwis_trigger_event_add_weak_transaction(struct lwis_client *client, int64_t 
 		return -EINVAL;
 	}
 	list_add_tail(&weak_transaction->event_list_node, &event_list->list);
-#ifdef LWIS_FENCE_ENABLED
 	if (lwis_fence_debug) {
 		dev_info(
 			client->lwis_dev->dev,
 			"lwis_fence add weak transaction for event id-%lld triggered transaction id %llu",
 			event_id, transaction_id);
 	}
-#endif
 	return 0;
 }
 
@@ -627,7 +623,7 @@ static int check_transaction_param_locked(struct lwis_client *client,
 					  bool is_level_triggered)
 {
 	struct lwis_device_event_state *event_state;
-	struct lwis_transaction_info *info = &transaction->info;
+	struct lwis_transaction_info_v2 *info = &transaction->info;
 	struct lwis_device *lwis_dev = client->lwis_dev;
 
 	if (!client) {
@@ -715,7 +711,7 @@ static int prepare_transaction_fences_locked(struct lwis_client *client,
 
 static int prepare_response_locked(struct lwis_client *client, struct lwis_transaction *transaction)
 {
-	struct lwis_transaction_info *info = &transaction->info;
+	struct lwis_transaction_info_v2 *info = &transaction->info;
 	int i;
 	size_t resp_size;
 	size_t read_buf_size = 0;
@@ -759,7 +755,7 @@ static int queue_transaction_locked(struct lwis_client *client,
 				    struct lwis_transaction *transaction)
 {
 	struct lwis_transaction_event_list *event_list;
-	struct lwis_transaction_info *info = &transaction->info;
+	struct lwis_transaction_info_v2 *info = &transaction->info;
 
 	if (transaction->queue_immediately) {
 		/* Immediate trigger. */
@@ -786,7 +782,7 @@ static int queue_transaction_locked(struct lwis_client *client,
 int lwis_transaction_submit_locked(struct lwis_client *client, struct lwis_transaction *transaction)
 {
 	int ret;
-	struct lwis_transaction_info *info = &transaction->info;
+	struct lwis_transaction_info_v2 *info = &transaction->info;
 
 	ret = check_transaction_param_locked(client, transaction,
 					     /*is_level_triggered=*/info->is_level_triggered);
@@ -822,7 +818,7 @@ new_repeating_transaction_iteration(struct lwis_client *client,
 			"Failed to allocate repeating transaction instance\n");
 		return NULL;
 	}
-	memcpy(&new_instance->info, &transaction->info, sizeof(struct lwis_transaction_info));
+	memcpy(&new_instance->info, &transaction->info, sizeof(transaction->info));
 
 	/* Allocate response buffer */
 	resp_buf = kmalloc(sizeof(struct lwis_transaction_response_header) +
@@ -911,14 +907,12 @@ int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
 
 			if (lwis_event_triggered_condition_ready(transaction, weak_transaction,
 								 event_id, event_counter)) {
-#ifdef LWIS_FENCE_ENABLED
 				if (lwis_fence_debug) {
 					dev_info(
 						client->lwis_dev->dev,
 						"lwis_fence event id-%lld counter-%lld triggered transaction id %llu",
 						event_id, event_counter, transaction->info.id);
 				}
-#endif
 				hash_del(&transaction->pending_map_node);
 				defer_transaction_locked(client, transaction, pending_events,
 							 &pending_fences,
@@ -993,28 +987,24 @@ void lwis_transaction_fence_trigger(struct lwis_client *client, struct lwis_fenc
 		transaction = pending_transaction_peek(client, transaction_id->id);
 		if (transaction == NULL) {
 			/* It means the transaction is already executed or is canceled */
-#ifdef LWIS_FENCE_ENABLED
 			if (lwis_fence_debug) {
 				dev_info(
 					client->lwis_dev->dev,
 					"lwis_fence fd-%d did NOT triggered transaction id %llu, seems already triggered",
 					fence->fd, transaction_id->id);
 			}
-#endif
 		} else {
 			if (lwis_fence_triggered_condition_ready(transaction, fence->status)) {
 				hash_del(&transaction->pending_map_node);
 				if (fence->status == 0) {
 					list_add_tail(&transaction->process_queue_node,
 						      &client->transaction_process_queue);
-#ifdef LWIS_FENCE_ENABLED
 					if (lwis_fence_debug) {
 						dev_info(
 							client->lwis_dev->dev,
 							"lwis_fence fd-%d triggered transaction id %llu",
 							fence->fd, transaction->info.id);
 					}
-#endif
 				} else {
 					cancel_transaction(client->lwis_dev, transaction,
 							   -ECANCELED, &pending_events,

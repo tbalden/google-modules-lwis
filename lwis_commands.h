@@ -348,6 +348,28 @@ struct lwis_transaction_info {
 	int64_t submission_timestamp_ns;
 };
 
+struct lwis_transaction_info_v2 {
+	// Input
+	int64_t trigger_event_id;
+	int64_t trigger_event_counter;
+	struct lwis_transaction_trigger_condition trigger_condition;
+	int32_t completion_fence_fd;
+	size_t num_io_entries;
+	struct lwis_io_entry *io_entries;
+	bool run_in_event_context;
+	// Use reserved to keep the original interface
+	bool reserved;
+	int64_t emit_success_event_id;
+	int64_t emit_error_event_id;
+	bool is_level_triggered;
+	// Output
+	int64_t id;
+	// Only will be set if trigger_event_id is specified.
+	// Otherwise, the value is -1.
+	int64_t current_trigger_event_counter;
+	int64_t submission_timestamp_ns;
+};
+
 // Actual size of this struct depends on num_entries
 struct lwis_transaction_response_header {
 	int64_t id;
@@ -471,8 +493,10 @@ enum lwis_cmd_id {
 	LWIS_CMD_ID_EVENT_DEQUEUE = 0x40200,
 
 	LWIS_CMD_ID_TRANSACTION_SUBMIT = 0x50000,
+	LWIS_CMD_ID_TRANSACTION_SUBMIT_V2,
 	LWIS_CMD_ID_TRANSACTION_CANCEL = 0x50100,
 	LWIS_CMD_ID_TRANSACTION_REPLACE = 0x50200,
+	LWIS_CMD_ID_TRANSACTION_REPLACE_V2,
 
 	LWIS_CMD_ID_PERIODIC_IO_SUBMIT = 0x60000,
 	LWIS_CMD_ID_PERIODIC_IO_CANCEL = 0x60100,
@@ -558,6 +582,11 @@ struct lwis_cmd_transaction_info {
 	struct lwis_transaction_info info;
 };
 
+struct lwis_cmd_transaction_info_v2 {
+	struct lwis_cmd_pkt header;
+	struct lwis_transaction_info_v2 info;
+};
+
 struct lwis_cmd_transaction_cancel {
 	struct lwis_cmd_pkt header;
 	int64_t id;
@@ -593,12 +622,10 @@ struct lwis_cmd_dpm_clk_get {
 	struct lwis_qos_setting setting;
 };
 
-#ifdef LWIS_FENCE_ENABLED
 struct lwis_cmd_fence_create {
 	struct lwis_cmd_pkt header;
 	int32_t fd;
 };
-#endif
 
 /*
  *  IOCTL Commands
