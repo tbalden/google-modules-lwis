@@ -1470,7 +1470,7 @@ int lwis_base_probe(struct lwis_device *lwis_dev, struct platform_device *plat_d
 	if (ret >= 0) {
 		lwis_dev->id = ret;
 	} else {
-		pr_err("Unable to allocate minor ID (%d)\n", ret);
+		dev_err(&plat_dev->dev, "Unable to allocate minor ID (%d)\n", ret);
 		return ret;
 	}
 
@@ -1528,7 +1528,6 @@ int lwis_base_probe(struct lwis_device *lwis_dev, struct platform_device *plat_d
 	lwis_platform_probe(lwis_dev);
 
 	lwis_device_debugfs_setup(lwis_dev, core.dbg_root);
-	memset(&lwis_dev->debug_info, 0, sizeof(lwis_dev->debug_info));
 
 	timer_setup(&lwis_dev->heartbeat_timer, event_heartbeat_timer, 0);
 

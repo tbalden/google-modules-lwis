@@ -254,7 +254,9 @@ static int parse_regulators(struct lwis_device *lwis_dev)
 	lwis_dev->regulators = lwis_regulator_list_alloc(count);
 	if (IS_ERR(lwis_dev->regulators)) {
 		pr_err("Cannot allocate regulator list\n");
-		return PTR_ERR(lwis_dev->regulators);
+		ret = PTR_ERR(lwis_dev->regulators);
+		lwis_dev->regulators = NULL;
+		return ret;
 	}
 
 	/* Parse regulator list and acquire the regulator pointers */
@@ -312,7 +314,9 @@ static int parse_clocks(struct lwis_device *lwis_dev)
 	lwis_dev->clocks = lwis_clock_list_alloc(count);
 	if (IS_ERR(lwis_dev->clocks)) {
 		pr_err("Cannot allocate clocks list\n");
-		return PTR_ERR(lwis_dev->clocks);
+		ret = PTR_ERR(lwis_dev->clocks);
+		lwis_dev->clocks = NULL;
+		return ret;
 	}
 
 	/* Parse and acquire clock pointers and frequencies, if applicable */
@@ -655,7 +659,9 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 		} else {
 			pr_err("Failed to allocate IRQ list\n");
 		}
-		return PTR_ERR(lwis_dev->irqs);
+		ret = PTR_ERR(lwis_dev->irqs);
+		lwis_dev->irqs = NULL;
+		return ret;
 	}
 
 	for (i = 0; i < count; ++i) {
@@ -747,7 +753,7 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 		ret = of_property_read_string(event_info, "irq-type", &irq_type_str);
 		if (ret && ret != -EINVAL) {
 			pr_err("Error getting irq-type from dt: %d\n", ret);
-			return ret;
+			goto error_event_infos;
 		} else if (ret && ret == -EINVAL) {
 			/* The property does not exist, which means regular*/
 			irq_type = REGULAR_INTERRUPT;
@@ -762,7 +768,7 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 				irq_type = FAKEEVENT_INTERRUPT;
 			} else {
 				pr_err("Invalid irq-type from dt: %s\n", irq_type_str);
-				return ret;
+				goto error_event_infos;
 			}
 		}
 
@@ -844,7 +850,9 @@ static int parse_phys(struct lwis_device *lwis_dev)
 	lwis_dev->phys = lwis_phy_list_alloc(count);
 	if (IS_ERR(lwis_dev->phys)) {
 		pr_err("Failed to allocate PHY list\n");
-		return PTR_ERR(lwis_dev->phys);
+		ret = PTR_ERR(lwis_dev->phys);
+		lwis_dev->phys = NULL;
+		return ret;
 	}
 
 	for (i = 0; i < count; ++i) {
@@ -943,7 +951,9 @@ static int parse_power_seqs(struct lwis_device *lwis_dev, const char *seq_name,
 	*list = lwis_dev_power_seq_list_alloc(power_seq_count);
 	if (IS_ERR(*list)) {
 		pr_err("Failed to allocate power sequence list\n");
-		return PTR_ERR(*list);
+		ret = PTR_ERR(*list);
+		*list = NULL;
+		return ret;
 	}
 
 	for (i = 0; i < power_seq_count; ++i) {
