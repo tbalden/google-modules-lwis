@@ -207,7 +207,7 @@ static int lwis_i2c_device_setup(struct lwis_i2c_device *i2c_dev)
 	   pinctrl's are defined */
 	/* TODO: Need to figure out why this is parent's parent */
 	pinctrl = devm_pinctrl_get(dev->parent->parent);
-	if (IS_ERR(pinctrl)) {
+	if (IS_ERR_OR_NULL(pinctrl)) {
 		dev_err(i2c_dev->base_dev.dev, "Cannot instantiate pinctrl instance (%lu)\n",
 			PTR_ERR(pinctrl));
 		return PTR_ERR(pinctrl);
@@ -215,11 +215,11 @@ static int lwis_i2c_device_setup(struct lwis_i2c_device *i2c_dev)
 
 	/* Verify that on_i2c or off_i2c strings are present */
 	i2c_dev->pinctrl_default_state_only = false;
-	if (IS_ERR(pinctrl_lookup_state(pinctrl, I2C_OFF_STRING)) ||
-	    IS_ERR(pinctrl_lookup_state(pinctrl, I2C_ON_STRING))) {
+	if (IS_ERR_OR_NULL(pinctrl_lookup_state(pinctrl, I2C_OFF_STRING)) ||
+	    IS_ERR_OR_NULL(pinctrl_lookup_state(pinctrl, I2C_ON_STRING))) {
 		state = pinctrl_lookup_state(pinctrl, I2C_DEFAULT_STATE_STRING);
 		/* Default option also missing, return error */
-		if (IS_ERR(state)) {
+		if (IS_ERR_OR_NULL(state)) {
 			dev_err(i2c_dev->base_dev.dev,
 				"Pinctrl states {%s, %s, %s} not found (%lu)\n", I2C_OFF_STRING,
 				I2C_ON_STRING, I2C_DEFAULT_STATE_STRING, PTR_ERR(state));

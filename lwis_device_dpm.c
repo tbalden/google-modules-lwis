@@ -167,7 +167,7 @@ int lwis_dpm_update_clock(struct lwis_device *lwis_dev, struct lwis_clk_setting 
 			goto out;
 		}
 
-		if (IS_ERR(lwis_dev->clocks->clk[clk_index].clk)) {
+		if (IS_ERR_OR_NULL(lwis_dev->clocks->clk[clk_index].clk)) {
 			dev_err(lwis_dev->dev, "%s clk is invalid\n", lwis_dev->name);
 			ret = -EINVAL;
 			goto out;
