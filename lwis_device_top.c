@@ -514,7 +514,7 @@ static int lwis_top_device_probe(struct platform_device *plat_dev)
 	kthread_init_worker(&top_dev->subscribe_worker);
 	top_dev->subscribe_worker_thread = kthread_run(
 		kthread_worker_fn, &top_dev->subscribe_worker, LWIS_SUBSCRIBER_THREAD_NAME);
-	if (IS_ERR(top_dev->subscribe_worker_thread)) {
+	if (IS_ERR_OR_NULL(top_dev->subscribe_worker_thread)) {
 		dev_err(top_dev->base_dev.dev, "subscribe kthread_run failed\n");
 		goto error_probe;
 	}

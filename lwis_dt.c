@@ -50,7 +50,7 @@ static int parse_gpios(struct lwis_device *lwis_dev, char *name, bool *is_presen
 	}
 
 	list = lwis_gpio_list_get(dev, name);
-	if (IS_ERR(list)) {
+	if (IS_ERR_OR_NULL(list)) {
 		pr_err("Error parsing GPIO list %s (%ld)\n", name, PTR_ERR(list));
 		return PTR_ERR(list);
 	}
@@ -103,14 +103,14 @@ static int parse_irq_gpios(struct lwis_device *lwis_dev)
 	}
 
 	gpios = lwis_gpio_list_get(dev, "irq");
-	if (IS_ERR(gpios)) {
+	if (IS_ERR_OR_NULL(gpios)) {
 		pr_err("Error parsing irq GPIO list (%ld)\n", PTR_ERR(gpios));
 		return PTR_ERR(gpios);
 	}
 	lwis_dev->irq_gpios_info.gpios = gpios;
 
 	lwis_dev->irq_gpios_info.irq_list = lwis_interrupt_list_alloc(lwis_dev, gpios->ndescs);
-	if (IS_ERR(lwis_dev->irq_gpios_info.irq_list)) {
+	if (IS_ERR_OR_NULL(lwis_dev->irq_gpios_info.irq_list)) {
 		ret = -ENOMEM;
 		lwis_dev->irq_gpios_info.irq_list = NULL;
 		pr_err("Failed to allocate irq list\n");
@@ -252,7 +252,7 @@ static int parse_regulators(struct lwis_device *lwis_dev)
 		of_property_count_elems_of_size(dev_node, "regulator-voltages", sizeof(u32));
 
 	lwis_dev->regulators = lwis_regulator_list_alloc(count);
-	if (IS_ERR(lwis_dev->regulators)) {
+	if (IS_ERR_OR_NULL(lwis_dev->regulators)) {
 		pr_err("Cannot allocate regulator list\n");
 		ret = PTR_ERR(lwis_dev->regulators);
 		lwis_dev->regulators = NULL;
@@ -312,7 +312,7 @@ static int parse_clocks(struct lwis_device *lwis_dev)
 	}
 
 	lwis_dev->clocks = lwis_clock_list_alloc(count);
-	if (IS_ERR(lwis_dev->clocks)) {
+	if (IS_ERR_OR_NULL(lwis_dev->clocks)) {
 		pr_err("Cannot allocate clocks list\n");
 		ret = PTR_ERR(lwis_dev->clocks);
 		lwis_dev->clocks = NULL;
@@ -393,13 +393,13 @@ static int parse_pinctrls(struct lwis_device *lwis_dev, char *expected_state)
 
 	/* Set up pinctrl */
 	pc = devm_pinctrl_get(dev);
-	if (IS_ERR(pc)) {
+	if (IS_ERR_OR_NULL(pc)) {
 		pr_err("Cannot allocate pinctrl\n");
 		return PTR_ERR(pc);
 	}
 
 	pinctrl_state = pinctrl_lookup_state(pc, expected_state);
-	if (IS_ERR(pinctrl_state)) {
+	if (IS_ERR_OR_NULL(pinctrl_state)) {
 		pr_err("Cannot find pinctrl state %s\n", expected_state);
 		devm_pinctrl_put(pc);
 		return PTR_ERR(pinctrl_state);
@@ -653,7 +653,7 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 	}
 
 	lwis_dev->irqs = lwis_interrupt_list_alloc(lwis_dev, count);
-	if (IS_ERR(lwis_dev->irqs)) {
+	if (IS_ERR_OR_NULL(lwis_dev->irqs)) {
 		if (lwis_dev->type == DEVICE_TYPE_TEST) {
 			pr_err("Failed to allocate injection\n");
 		} else {
@@ -848,7 +848,7 @@ static int parse_phys(struct lwis_device *lwis_dev)
 	}
 
 	lwis_dev->phys = lwis_phy_list_alloc(count);
-	if (IS_ERR(lwis_dev->phys)) {
+	if (IS_ERR_OR_NULL(lwis_dev->phys)) {
 		pr_err("Failed to allocate PHY list\n");
 		ret = PTR_ERR(lwis_dev->phys);
 		lwis_dev->phys = NULL;
@@ -949,7 +949,7 @@ static int parse_power_seqs(struct lwis_device *lwis_dev, const char *seq_name,
 	}
 
 	*list = lwis_dev_power_seq_list_alloc(power_seq_count);
-	if (IS_ERR(*list)) {
+	if (IS_ERR_OR_NULL(*list)) {
 		pr_err("Failed to allocate power sequence list\n");
 		ret = PTR_ERR(*list);
 		*list = NULL;
@@ -990,7 +990,7 @@ static int parse_power_seqs(struct lwis_device *lwis_dev, const char *seq_name,
 
 	if (type_gpio_count > 0 && lwis_dev->gpios_list == NULL) {
 		lwis_dev->gpios_list = lwis_gpios_list_alloc(type_gpio_count);
-		if (IS_ERR(lwis_dev->gpios_list)) {
+		if (IS_ERR_OR_NULL(lwis_dev->gpios_list)) {
 			pr_err("Failed to allocate gpios list\n");
 			ret = PTR_ERR(lwis_dev->gpios_list);
 			goto error_parse_power_seqs;
@@ -1011,7 +1011,7 @@ static int parse_power_seqs(struct lwis_device *lwis_dev, const char *seq_name,
 			seq_item_name = (*list)->seq_info[i].name;
 			dev = &lwis_dev->plat_dev->dev;
 			descs = lwis_gpio_list_get(dev, seq_item_name);
-			if (IS_ERR(descs)) {
+			if (IS_ERR_OR_NULL(descs)) {
 				pr_err("Error parsing GPIO list %s (%ld)\n", seq_item_name,
 				       PTR_ERR(descs));
 				ret = PTR_ERR(descs);
@@ -1045,7 +1045,7 @@ static int parse_power_seqs(struct lwis_device *lwis_dev, const char *seq_name,
 
 	if (type_regulator_count > 0 && lwis_dev->regulators == NULL) {
 		lwis_dev->regulators = lwis_regulator_list_alloc(type_regulator_count);
-		if (IS_ERR(lwis_dev->regulators)) {
+		if (IS_ERR_OR_NULL(lwis_dev->regulators)) {
 			pr_err("Failed to allocate regulator list\n");
 			ret = PTR_ERR(lwis_dev->regulators);
 			goto error_parse_power_seqs;

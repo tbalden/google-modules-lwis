@@ -617,7 +617,7 @@ int lwis_dev_process_power_sequence(struct lwis_device *lwis_dev,
 
 			gpios_info = lwis_gpios_get_info_by_name(lwis_dev->gpios_list,
 								 list->seq_info[i].name);
-			if (IS_ERR(gpios_info)) {
+			if (IS_ERR_OR_NULL(gpios_info)) {
 				dev_err(lwis_dev->dev, "Get %s gpios info failed\n",
 					list->seq_info[i].name);
 				ret = PTR_ERR(gpios_info);
@@ -693,7 +693,7 @@ int lwis_dev_process_power_sequence(struct lwis_device *lwis_dev,
 						gpios_info_it = lwis_gpios_get_info_by_name(
 							lwis_dev_it->gpios_list,
 							list->seq_info[i].name);
-						if (IS_ERR(gpios_info_it)) {
+						if (IS_ERR_OR_NULL(gpios_info_it)) {
 							continue;
 						}
 						if (gpios_info_it->id == gpios_info->id &&
@@ -752,7 +752,7 @@ int lwis_dev_process_power_sequence(struct lwis_device *lwis_dev,
 
 			if (set_active) {
 				lwis_dev->mclk_ctrl = devm_pinctrl_get(&lwis_dev->plat_dev->dev);
-				if (IS_ERR(lwis_dev->mclk_ctrl)) {
+				if (IS_ERR_OR_NULL(lwis_dev->mclk_ctrl)) {
 					dev_err(lwis_dev->dev, "Failed to get mclk\n");
 					ret = PTR_ERR(lwis_dev->mclk_ctrl);
 					lwis_dev->mclk_ctrl = NULL;
@@ -923,7 +923,7 @@ static int lwis_dev_power_up_by_default(struct lwis_device *lwis_dev)
 		bool activate_mclk = true;
 
 		lwis_dev->mclk_ctrl = devm_pinctrl_get(&lwis_dev->plat_dev->dev);
-		if (IS_ERR(lwis_dev->mclk_ctrl)) {
+		if (IS_ERR_OR_NULL(lwis_dev->mclk_ctrl)) {
 			dev_err(lwis_dev->dev, "Failed to get mclk\n");
 			ret = PTR_ERR(lwis_dev->mclk_ctrl);
 			lwis_dev->mclk_ctrl = NULL;
@@ -1516,7 +1516,7 @@ int lwis_base_probe(struct lwis_device *lwis_dev, struct platform_device *plat_d
 	/* Upon success initialization, create device for this instance */
 	lwis_dev->dev = device_create(core.dev_class, NULL, MKDEV(core.device_major, lwis_dev->id),
 				      lwis_dev, LWIS_DEVICE_NAME "-%s", lwis_dev->name);
-	if (IS_ERR(lwis_dev->dev)) {
+	if (IS_ERR_OR_NULL(lwis_dev->dev)) {
 		pr_err("Failed to create device\n");
 		ret = PTR_ERR(lwis_dev->dev);
 		goto error_init;
@@ -1602,7 +1602,7 @@ void lwis_base_unprobe(struct lwis_device *unprobe_lwis_dev)
 				lwis_dev->irq_gpios_info.gpios = NULL;
 			}
 			/* Destroy device */
-			if (!IS_ERR(lwis_dev->dev)) {
+			if (!IS_ERR_OR_NULL(lwis_dev->dev)) {
 				device_destroy(core.dev_class,
 					       MKDEV(core.device_major, lwis_dev->id));
 			}
@@ -1648,7 +1648,7 @@ static int __init lwis_register_base_device(void)
 
 	/* Create a device class*/
 	core.dev_class = class_create(THIS_MODULE, LWIS_CLASS_NAME);
-	if (IS_ERR(core.dev_class)) {
+	if (IS_ERR_OR_NULL(core.dev_class)) {
 		pr_err("Failed to create device class\n");
 		ret = PTR_ERR(core.dev_class);
 		goto error_class_create;
