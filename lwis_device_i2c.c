@@ -302,7 +302,7 @@ static int lwis_i2c_device_suspend(struct device *dev)
 	struct lwis_device *lwis_dev = dev_get_drvdata(dev);
 
 	if (lwis_dev->pm_hibernation == 0) {
-		/* TODO(b/265688764): Cleaning up system deep sleep for flash driver. */
+		/* Allow the device to enter PM hibernation, e.g., flash driver. */
 		return 0;
 	}
 
