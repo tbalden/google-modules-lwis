@@ -51,6 +51,7 @@ extern "C" {
  * slc  : for configuring system level cache partitions
  * dpm  : for dynamic power manager requests update.
  * test : for test-specific devices.
+ * spi  : for controlling spi devices
  */
 enum lwis_device_types {
 	DEVICE_TYPE_UNKNOWN = -1,
@@ -60,6 +61,7 @@ enum lwis_device_types {
 	DEVICE_TYPE_SLC,
 	DEVICE_TYPE_DPM,
 	DEVICE_TYPE_TEST,
+	DEVICE_TYPE_SPI,
 	NUM_DEVICE_TYPES
 };
 

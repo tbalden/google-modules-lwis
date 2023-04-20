@@ -637,6 +637,10 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 	struct platform_device *plat_dev;
 	struct of_phandle_iterator it;
 
+	if (lwis_dev->type == DEVICE_TYPE_SPI) {
+		return 0;
+	}
+
 	plat_dev = lwis_dev->plat_dev;
 	dev_node = lwis_dev->k_dev->of_node;
 
@@ -1409,6 +1413,11 @@ int lwis_i2c_device_parse_dt(struct lwis_i2c_device *i2c_dev)
 		return ret;
 	}
 
+	return 0;
+}
+
+int lwis_spi_device_parse_dt(struct lwis_spi_device *spi_dev)
+{
 	return 0;
 }
 
