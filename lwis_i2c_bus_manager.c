@@ -208,20 +208,24 @@ static void destroy_i2c_bus_manager(struct lwis_i2c_bus_manager *i2c_bus_manager
 				    struct lwis_device *lwis_dev)
 {
 	unsigned long flags;
-	if (i2c_bus_manager) {
-		dev_info(lwis_dev->dev, "Destroying I2C Bus Manager: %s\n",
-			 i2c_bus_manager->i2c_bus_name);
-		spin_lock_irqsave(&i2c_bus_manager->i2c_process_queue_lock, flags);
-		lwis_i2c_process_request_queue_destroy(&i2c_bus_manager->i2c_bus_process_queue);
-		spin_unlock_irqrestore(&i2c_bus_manager->i2c_process_queue_lock, flags);
-
-		/* Delete the bus manager instance from the list */
-		delete_bus_manager_id_in_list(i2c_bus_manager->i2c_bus_id);
-
-		/* Free the bus manager */
-		kfree(i2c_bus_manager);
-		i2c_bus_manager = NULL;
+	int i = 0;
+	if (!i2c_bus_manager) {
+		return;
 	}
+
+	dev_info(lwis_dev->dev, "Destroying I2C Bus Manager: %s\n", i2c_bus_manager->i2c_bus_name);
+	spin_lock_irqsave(&i2c_bus_manager->i2c_process_queue_lock, flags);
+	for (i = 0; i < I2C_MAX_PRIORITY_LEVELS; i++) {
+		lwis_i2c_process_request_queue_destroy(&i2c_bus_manager->i2c_bus_process_queue[i]);
+	}
+	spin_unlock_irqrestore(&i2c_bus_manager->i2c_process_queue_lock, flags);
+
+	/* Delete the bus manager instance from the list */
+	delete_bus_manager_id_in_list(i2c_bus_manager->i2c_bus_id);
+
+	/* Free the bus manager */
+	kfree(i2c_bus_manager);
+	i2c_bus_manager = NULL;
 }
 
 /*
@@ -259,42 +263,76 @@ static int connect_i2c_bus_manager(struct lwis_i2c_bus_manager *i2c_bus_manager,
 	return ret;
 }
 
+static bool i2c_device_priority_is_valid(int device_priority)
+{
+	if ((device_priority >= I2C_DEVICE_HIGH_PRIORITY) &&
+	    (device_priority <= I2C_DEVICE_LOW_PRIORITY)) {
+		return true;
+	}
+	return false;
+}
+
 /*
  * lwis_i2c_bus_manager_process_worker_queue:
  * Function to be called by i2c bus manager worker thread to
- * pick the next I2C device that is scheduled for transfer
+ * pick the next I2C client that is scheduled for transfer.
+ * The process queue will be processed in order of I2C
+ * device priority.
  */
 void lwis_i2c_bus_manager_process_worker_queue(struct lwis_client *client)
 {
 	/* Get the correct I2C Bus manager to process it's queue */
 	struct lwis_device *lwis_dev = NULL;
 	struct lwis_i2c_bus_manager *i2c_bus_manager = NULL;
+	int i = 0;
 
 	/* The transfers will be processed in fifo order */
-	struct lwis_device **dequeuing_dev = NULL;
 	struct lwis_client *client_to_process = NULL;
 	struct lwis_device *lwis_dev_to_process = NULL;
 	unsigned long flags;
+	struct lwis_i2c_process_queue *process_queue = NULL;
+	struct lwis_i2c_process_request *process_request = NULL;
+
+	struct list_head *i2c_client_node, *i2c_client_tmp_node;
 
 	lwis_dev = client->lwis_dev;
 	i2c_bus_manager = lwis_i2c_bus_manager_get_manager(lwis_dev);
 
-	if (i2c_bus_manager) {
-		spin_lock_irqsave(&i2c_bus_manager->i2c_process_queue_lock, flags);
-		dequeuing_dev = lwis_i2c_process_request_queue_dequeue_request(
-			&i2c_bus_manager->i2c_bus_process_queue);
-		spin_unlock_irqrestore(&i2c_bus_manager->i2c_process_queue_lock, flags);
-
-		if (dequeuing_dev) {
-			lwis_dev_to_process = *dequeuing_dev;
+	if (!i2c_bus_manager) {
+		dev_err(lwis_dev->dev, "I2C Bus Manager is null\n");
+		return;
+	}
+	spin_lock_irqsave(&i2c_bus_manager->i2c_process_queue_lock, flags);
+	for (i = 0; i < I2C_MAX_PRIORITY_LEVELS; i++) {
+		process_queue = &i2c_bus_manager->i2c_bus_process_queue[i];
+		list_for_each_safe (i2c_client_node, i2c_client_tmp_node, &process_queue->head) {
+			process_request = list_entry(i2c_client_node,
+						     struct lwis_i2c_process_request, request_node);
+			if (!process_request) {
+				dev_err(lwis_dev->dev, "I2C Bus Worker process_request is null\n");
+				break;
+			}
+			client_to_process = process_request->requesting_client;
+			if (!client_to_process) {
+				dev_err(lwis_dev->dev,
+					"I2C Bus Worker client_to_process is null\n");
+				break;
+			}
+			lwis_dev_to_process = client_to_process->lwis_dev;
+			if (!lwis_dev_to_process) {
+				dev_err(lwis_dev->dev,
+					"I2C Bus Worker lwis_dev_to_process is null\n");
+				break;
+			}
+			spin_unlock_irqrestore(&i2c_bus_manager->i2c_process_queue_lock, flags);
 			if (is_valid_connected_device(lwis_dev_to_process, i2c_bus_manager)) {
-				client_to_process =
-					container_of(dequeuing_dev, struct lwis_client, lwis_dev);
 				lwis_process_transactions_in_queue(client_to_process);
 				lwis_process_periodic_io_in_queue(client_to_process);
 			}
+			spin_lock_irqsave(&i2c_bus_manager->i2c_process_queue_lock, flags);
 		}
 	}
+	spin_unlock_irqrestore(&i2c_bus_manager->i2c_process_queue_lock, flags);
 }
 
 /*
@@ -304,6 +342,7 @@ void lwis_i2c_bus_manager_process_worker_queue(struct lwis_client *client)
 int lwis_i2c_bus_manager_create(struct lwis_i2c_device *i2c_dev)
 {
 	int ret = 0;
+	int i = 0;
 	struct lwis_i2c_bus_manager *i2c_bus_manager = NULL;
 	struct lwis_device *i2c_base_device = &i2c_dev->base_dev;
 
@@ -331,7 +370,10 @@ int lwis_i2c_bus_manager_create(struct lwis_i2c_device *i2c_dev)
 		INIT_LIST_HEAD(&i2c_bus_manager->i2c_connected_devices);
 
 		/* Create a I2C transfer process queue */
-		lwis_i2c_process_request_queue_initialize(&i2c_bus_manager->i2c_bus_process_queue);
+		for (i = 0; i < I2C_MAX_PRIORITY_LEVELS; i++) {
+			lwis_i2c_process_request_queue_initialize(
+				&i2c_bus_manager->i2c_bus_process_queue[i]);
+		}
 
 		/* Insert this instance of bus manager in the bus manager list */
 		ret = insert_bus_manager_id_in_list(i2c_bus_manager, i2c_dev->adapter->nr);
@@ -421,25 +463,6 @@ void lwis_i2c_bus_manager_disconnect(struct lwis_device *lwis_dev)
 	}
 }
 
-/* lwis_i2c_bus_manager_enqueue_transfer_request:
- * Enqueues I2C transfer request from a requesting device on the I2C Scheduler
- */
-int lwis_i2c_bus_manager_enqueue_transfer_request(struct lwis_i2c_bus_manager *i2c_bus_manager,
-						  struct lwis_device **lwis_dev)
-{
-	int ret = 0;
-	struct lwis_device *enqueuing_dev = *lwis_dev;
-	unsigned long flags;
-
-	if (lwis_check_device_type(enqueuing_dev, DEVICE_TYPE_I2C)) {
-		spin_lock_irqsave(&i2c_bus_manager->i2c_process_queue_lock, flags);
-		ret = lwis_i2c_process_request_queue_enqueue_request(
-			&i2c_bus_manager->i2c_bus_process_queue, lwis_dev);
-		spin_unlock_irqrestore(&i2c_bus_manager->i2c_process_queue_lock, flags);
-	}
-	return ret;
-}
-
 /* lwis_i2c_bus_manager_lock_i2c_bus:
  * Locks the I2C bus for a given I2C Lwis Device
  */
@@ -479,23 +502,23 @@ struct lwis_i2c_bus_manager *lwis_i2c_bus_manager_get_manager(struct lwis_device
 	return NULL;
 }
 
+/* lwis_i2c_bus_manager_flush_i2c_worker:
+ * Flushes the I2C Bus Manager worker
+ */
 void lwis_i2c_bus_manager_flush_i2c_worker(struct lwis_device *lwis_dev)
 {
-	unsigned long process_queue_flags;
 	struct lwis_i2c_bus_manager *i2c_bus_manager = lwis_i2c_bus_manager_get_manager(lwis_dev);
 
 	if (i2c_bus_manager == NULL)
 		return;
 
 	kthread_flush_worker(&i2c_bus_manager->i2c_bus_worker);
-
-	/* After flushing the worker the process queue should be empty.
-	* This destroy is to make sure there are no more requests to be handled. */
-	spin_lock_irqsave(&i2c_bus_manager->i2c_process_queue_lock, process_queue_flags);
-	lwis_i2c_process_request_queue_destroy(&i2c_bus_manager->i2c_bus_process_queue);
-	spin_unlock_irqrestore(&i2c_bus_manager->i2c_process_queue_lock, process_queue_flags);
 }
 
+/* lwis_i2c_bus_manager_list_initialize:
+ * Initializes bus manager global list. This is the list that holds
+ * actual bus manager pointers for a given physical I2C Bus connection
+ */
 void lwis_i2c_bus_manager_list_initialize(void)
 {
 	/* initialize_i2c_bus_manager_list */
@@ -503,6 +526,9 @@ void lwis_i2c_bus_manager_list_initialize(void)
 	INIT_LIST_HEAD(&i2c_bus_manager_list.i2c_bus_manager_list_head);
 }
 
+/* lwis_i2c_bus_manager_list_deinitialize:
+ * Deinitializes bus manager global list
+ */
 void lwis_i2c_bus_manager_list_deinitialize(void)
 {
 	struct list_head *i2c_bus_manager_list_node, *i2c_bus_manager_list_tmp_node;
@@ -521,4 +547,169 @@ void lwis_i2c_bus_manager_list_deinitialize(void)
 		i2c_bus_manager_identifier = NULL;
 	}
 	mutex_unlock(&i2c_bus_manager_list_lock);
+}
+
+/* lwis_i2c_bus_manager_connect_client:
+ * Connects a lwis client to the bus manager to be processed by the worker.
+ * The client will be connected to the appropriate priority queue based
+ * on the I2C device priority specified in the dts for the I2C device node.
+ * I2C lwis client is always connected when a new instance of client is
+ * created.
+ */
+int lwis_i2c_bus_manager_connect_client(struct lwis_client *connecting_client)
+{
+	int ret = 0;
+	int device_priority = I2C_MAX_PRIORITY_LEVELS;
+	unsigned long flags;
+	bool create_client_node = true;
+	struct lwis_i2c_process_request *i2c_connecting_client_node;
+	struct lwis_device *lwis_dev = NULL;
+	struct lwis_i2c_process_queue *process_queue = NULL;
+	struct lwis_i2c_device *i2c_dev = NULL;
+	struct lwis_i2c_bus_manager *i2c_bus_manager = NULL;
+	struct list_head *request, *request_tmp;
+	struct lwis_i2c_process_request *search_node;
+
+	if (!connecting_client) {
+		pr_err("Connecting client pointer for I2C Bus Manager is NULL\n");
+		return -EINVAL;
+	}
+
+	lwis_dev = connecting_client->lwis_dev;
+	if (!lwis_dev) {
+		pr_err("Connecting device for I2C Bus Manager is NULL\n");
+		return -EINVAL;
+	}
+
+	if (!lwis_check_device_type(lwis_dev, DEVICE_TYPE_I2C)) {
+		return ret;
+	}
+
+	i2c_bus_manager = lwis_i2c_bus_manager_get_manager(lwis_dev);
+	if (!i2c_bus_manager) {
+		dev_err(lwis_dev->dev, "I2C bus manager is NULL\n");
+		return -EINVAL;
+	}
+
+	i2c_dev = container_of(lwis_dev, struct lwis_i2c_device, base_dev);
+	if (!i2c_dev) {
+		dev_err(lwis_dev->dev, "I2C device is NULL\n");
+		return -EINVAL;
+	}
+
+	device_priority = i2c_dev->device_priority;
+	if (!i2c_device_priority_is_valid(device_priority)) {
+		dev_err(lwis_dev->dev, "Invalid I2C device priority %d\n", device_priority);
+		return -EINVAL;
+	}
+
+	spin_lock_irqsave(&i2c_bus_manager->i2c_process_queue_lock, flags);
+
+	// Search for existing client node in the queue, if client is already connected
+	// to this bus then don't create a new client node
+	process_queue = &i2c_bus_manager->i2c_bus_process_queue[device_priority];
+	if (!lwis_i2c_process_request_queue_is_empty(process_queue)) {
+		list_for_each_safe (request, request_tmp, &process_queue->head) {
+			search_node =
+				list_entry(request, struct lwis_i2c_process_request, request_node);
+			if (search_node->requesting_client == connecting_client) {
+				dev_info(lwis_dev->dev,
+					 "I2C client already connected %s(%p) to bus %s \n",
+					 lwis_dev->name, connecting_client,
+					 i2c_bus_manager->i2c_bus_name);
+				create_client_node = false;
+				break;
+			}
+		}
+	}
+
+	if (create_client_node) {
+		i2c_connecting_client_node =
+			kzalloc(sizeof(struct lwis_i2c_process_request), GFP_ATOMIC);
+		if (!i2c_connecting_client_node) {
+			dev_err(lwis_dev->dev, "Failed to connect client to I2C Bus Manager\n");
+			return -ENOMEM;
+		}
+		i2c_connecting_client_node->requesting_client = connecting_client;
+		INIT_LIST_HEAD(&i2c_connecting_client_node->request_node);
+		list_add_tail(&i2c_connecting_client_node->request_node, &process_queue->head);
+		++process_queue->number_of_nodes;
+		dev_info(lwis_dev->dev, "Connecting client %s(%p) to bus %s\n", lwis_dev->name,
+			 connecting_client, i2c_bus_manager->i2c_bus_name);
+	}
+
+	spin_unlock_irqrestore(&i2c_bus_manager->i2c_process_queue_lock, flags);
+	return ret;
+}
+
+/* lwis_i2c_bus_manager_disconnect_client:
+ * Disconnects a lwis client to the bus manager. This will make sure that
+ * the released client is not processed further by the I2C worker.
+ * The client will be disconnected from the appropriate priority queue based
+ * on the I2C device priority specified in the dts for the I2C device node.
+ * I2C lwis client is always disconnected when the instance of client is
+ * released/destroyed.
+ */
+void lwis_i2c_bus_manager_disconnect_client(struct lwis_client *disconnecting_client)
+{
+	int device_priority = I2C_MAX_PRIORITY_LEVELS;
+	unsigned long flags;
+	struct lwis_i2c_process_request *i2c_disconnecting_client_node;
+	struct lwis_device *lwis_dev = NULL;
+	struct lwis_i2c_process_queue *process_queue = NULL;
+	struct lwis_i2c_device *i2c_dev = NULL;
+	struct list_head *request, *request_tmp;
+	struct lwis_i2c_bus_manager *i2c_bus_manager = NULL;
+
+	if (!disconnecting_client) {
+		pr_err("Disconnecting client pointer for I2C Bus Manager is NULL\n");
+		return;
+	}
+
+	lwis_dev = disconnecting_client->lwis_dev;
+	if (!lwis_dev) {
+		pr_err("Disconnecting device for I2C Bus Manager is NULL\n");
+		return;
+	}
+
+	if (!lwis_check_device_type(lwis_dev, DEVICE_TYPE_I2C)) {
+		return;
+	}
+
+	i2c_bus_manager = lwis_i2c_bus_manager_get_manager(lwis_dev);
+	if (!i2c_bus_manager) {
+		dev_err(lwis_dev->dev, "I2C bus manager is NULL\n");
+		return;
+	}
+
+	i2c_dev = container_of(lwis_dev, struct lwis_i2c_device, base_dev);
+	if (!i2c_dev) {
+		dev_err(lwis_dev->dev, "I2C device is NULL\n");
+		return;
+	}
+
+	device_priority = i2c_dev->device_priority;
+	if (!i2c_device_priority_is_valid(device_priority)) {
+		dev_err(lwis_dev->dev, "Invalid I2C device priority %d\n", device_priority);
+		return;
+	}
+
+	spin_lock_irqsave(&i2c_bus_manager->i2c_process_queue_lock, flags);
+	process_queue = &i2c_bus_manager->i2c_bus_process_queue[device_priority];
+	list_for_each_safe (request, request_tmp, &process_queue->head) {
+		i2c_disconnecting_client_node =
+			list_entry(request, struct lwis_i2c_process_request, request_node);
+		if (i2c_disconnecting_client_node->requesting_client == disconnecting_client) {
+			dev_info(lwis_dev->dev, "Disconnecting I2C client %s(%p) from bus %s\n",
+				 lwis_dev->name, disconnecting_client,
+				 i2c_bus_manager->i2c_bus_name);
+			list_del(&i2c_disconnecting_client_node->request_node);
+			i2c_disconnecting_client_node->requesting_client = NULL;
+			kfree(i2c_disconnecting_client_node);
+			i2c_disconnecting_client_node = NULL;
+			--process_queue->number_of_nodes;
+			break;
+		}
+	}
+	spin_unlock_irqrestore(&i2c_bus_manager->i2c_process_queue_lock, flags);
 }

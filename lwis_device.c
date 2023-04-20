@@ -160,6 +160,11 @@ static int lwis_open(struct inode *node, struct file *fp)
 	/* Storing the client handle in fp private_data for easy access */
 	fp->private_data = lwis_client;
 
+	if (lwis_i2c_bus_manager_connect_client(lwis_client)) {
+		dev_err(lwis_dev->dev, "Failed to connect lwis client to I2C bus manager\n");
+		return -EINVAL;
+	}
+
 	lwis_client->is_enabled = false;
 	return 0;
 }
@@ -233,6 +238,8 @@ static int lwis_release_client(struct lwis_client *lwis_client)
 				       "but the entry was not found on the clients list.");
 	}
 	spin_unlock_irqrestore(&lwis_dev->lock, flags);
+
+	lwis_i2c_bus_manager_disconnect_client(lwis_client);
 
 	kfree(lwis_client);
 

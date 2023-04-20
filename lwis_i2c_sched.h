@@ -20,18 +20,14 @@ struct lwis_i2c_process_queue;
  * This maintains the node to identify the devices that
  * have a request to be processed on a given I2C bus */
 struct lwis_i2c_process_request {
-	struct lwis_device **requesting_device;
+	struct lwis_client *requesting_client;
 	struct list_head request_node;
 };
+
+bool lwis_i2c_process_request_queue_is_empty(struct lwis_i2c_process_queue *process_queue);
 
 void lwis_i2c_process_request_queue_initialize(struct lwis_i2c_process_queue *process_queue);
 
 void lwis_i2c_process_request_queue_destroy(struct lwis_i2c_process_queue *process_queue);
-
-int lwis_i2c_process_request_queue_enqueue_request(struct lwis_i2c_process_queue *process_queue,
-						   struct lwis_device **requesting_device);
-
-struct lwis_device **
-lwis_i2c_process_request_queue_dequeue_request(struct lwis_i2c_process_queue *process_queue);
 
 #endif /* LWIS_I2C_SCHED_H_ */

@@ -37,7 +37,6 @@ static enum hrtimer_restart periodic_io_timer_func(struct hrtimer *timer)
 	bool active_periodic_io_present = false;
 	struct lwis_device *lwis_dev;
 	struct lwis_i2c_bus_manager *i2c_bus_manager = NULL;
-	int ret = 0;
 
 	periodic_io_list = container_of(timer, struct lwis_periodic_io_list, hr_timer);
 	client = periodic_io_list->client;
@@ -65,12 +64,7 @@ static enum hrtimer_restart periodic_io_timer_func(struct hrtimer *timer)
 	}
 	if (active_periodic_io_present) {
 		if (i2c_bus_manager) {
-			ret = lwis_i2c_bus_manager_enqueue_transfer_request(i2c_bus_manager,
-									    &client->lwis_dev);
-			if (!ret) {
-				kthread_queue_work(&i2c_bus_manager->i2c_bus_worker,
-						   &client->i2c_work);
-			}
+			kthread_queue_work(&i2c_bus_manager->i2c_bus_worker, &client->i2c_work);
 		} else {
 			kthread_queue_work(&client->lwis_dev->transaction_worker,
 					   &client->transaction_work);
