@@ -304,6 +304,7 @@ struct lwis_transaction_trigger_node {
 };
 
 enum lwis_transaction_trigger_node_operator {
+	LWIS_TRIGGER_NODE_OPERATOR_INVALID = -1,
 	LWIS_TRIGGER_NODE_OPERATOR_NONE,
 	LWIS_TRIGGER_NODE_OPERATOR_AND,
 	LWIS_TRIGGER_NODE_OPERATOR_OR,
@@ -324,14 +325,11 @@ struct lwis_transaction_trigger_condition {
 #define LWIS_ID_INVALID (-1LL)
 #define LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE (-1LL)
 #define LWIS_EVENT_COUNTER_EVERY_TIME (-2LL)
+
 struct lwis_transaction_info {
 	// Input
 	int64_t trigger_event_id;
 	int64_t trigger_event_counter;
-#ifdef LWIS_FENCE_ENABLED
-	struct lwis_transaction_trigger_condition trigger_condition;
-	int32_t completion_fence_fd;
-#endif
 	size_t num_io_entries;
 	struct lwis_io_entry *io_entries;
 	bool run_in_event_context;
