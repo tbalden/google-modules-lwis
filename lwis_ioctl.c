@@ -80,8 +80,8 @@ static int register_read(struct lwis_device *lwis_dev, struct lwis_io_entry *rea
 		/* Save the userspace buffer address */
 		user_buf = read_entry->rw_batch.buf;
 		/* Allocate read buffer */
-		read_entry->rw_batch.buf =
-			lwis_allocator_allocate(lwis_dev, read_entry->rw_batch.size_in_bytes);
+		read_entry->rw_batch.buf = lwis_allocator_allocate(
+			lwis_dev, read_entry->rw_batch.size_in_bytes, GFP_KERNEL);
 		if (!read_entry->rw_batch.buf) {
 			dev_err_ratelimited(lwis_dev->dev,
 					    "Failed to allocate register read buffer\n");
@@ -136,8 +136,8 @@ static int register_write(struct lwis_device *lwis_dev, struct lwis_io_entry *wr
 		/* Save the userspace buffer address */
 		user_buf = write_entry->rw_batch.buf;
 		/* Allocate write buffer and copy contents from userspace */
-		write_entry->rw_batch.buf =
-			lwis_allocator_allocate(lwis_dev, write_entry->rw_batch.size_in_bytes);
+		write_entry->rw_batch.buf = lwis_allocator_allocate(
+			lwis_dev, write_entry->rw_batch.size_in_bytes, GFP_KERNEL);
 		if (!write_entry->rw_batch.buf) {
 			dev_err_ratelimited(lwis_dev->dev,
 					    "Failed to allocate register write buffer\n");
@@ -251,7 +251,7 @@ static int construct_io_entry(struct lwis_client *client, struct lwis_io_entry *
 		dev_err(lwis_dev->dev, "Failed to prepare io entries due to integer overflow\n");
 		return -EOVERFLOW;
 	}
-	k_entries = lwis_allocator_allocate(lwis_dev, entry_size);
+	k_entries = lwis_allocator_allocate(lwis_dev, entry_size, GFP_KERNEL);
 	if (!k_entries) {
 		dev_err(lwis_dev->dev, "Failed to allocate io entries\n");
 		return -ENOMEM;
@@ -271,8 +271,8 @@ static int construct_io_entry(struct lwis_client *client, struct lwis_io_entry *
 	for (i = 0; i < num_io_entries; ++i) {
 		if (k_entries[i].type == LWIS_IO_ENTRY_WRITE_BATCH) {
 			user_buf = k_entries[i].rw_batch.buf;
-			k_buf = lwis_allocator_allocate(lwis_dev,
-							k_entries[i].rw_batch.size_in_bytes);
+			k_buf = lwis_allocator_allocate(
+				lwis_dev, k_entries[i].rw_batch.size_in_bytes, GFP_KERNEL);
 			if (!k_buf) {
 				dev_err_ratelimited(lwis_dev->dev,
 						    "Failed to allocate io write buffer\n");
@@ -557,7 +557,7 @@ static int copy_io_entries_from_cmd(struct lwis_device *lwis_dev,
 		dev_err(lwis_dev->dev, "Failed to copy io_entries due to integer overflow.\n");
 		return -EOVERFLOW;
 	}
-	io_entries = lwis_allocator_allocate(lwis_dev, buf_size);
+	io_entries = lwis_allocator_allocate(lwis_dev, buf_size, GFP_KERNEL);
 	if (!io_entries) {
 		dev_err(lwis_dev->dev, "Failed to allocate io_entries buffer\n");
 		return -ENOMEM;

@@ -44,7 +44,7 @@ static enum hrtimer_restart periodic_io_timer_func(struct hrtimer *timer)
 		periodic_io = list_entry(it_period, struct lwis_periodic_io, timer_list_node);
 		if (periodic_io->active) {
 			periodic_io_proxy = lwis_allocator_allocate(
-				client->lwis_dev, sizeof(struct lwis_periodic_io_proxy));
+				client->lwis_dev, sizeof(*periodic_io_proxy), GFP_ATOMIC);
 			if (!periodic_io_proxy) {
 				/* Non-fatal, skip this period */
 				pr_warn("Cannot allocate new periodic io proxy.\n");
