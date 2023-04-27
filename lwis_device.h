@@ -346,8 +346,6 @@ struct lwis_client {
 	struct list_head node;
 	/* Mark if the client called device enable */
 	bool is_enabled;
-	/* Work item to schedule I2C transfers */
-	struct kthread_work i2c_work;
 };
 
 /*

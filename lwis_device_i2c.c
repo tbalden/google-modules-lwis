@@ -271,12 +271,24 @@ static int lwis_i2c_device_probe(struct platform_device *plat_dev)
 		goto error_probe;
 	}
 
-	/* Create I2C Bus Manager */
-	ret = lwis_i2c_bus_manager_create(i2c_dev);
+	/* Create associated kworker threads */
+	ret = lwis_create_kthread_workers(&i2c_dev->base_dev);
 	if (ret) {
-		dev_err(i2c_dev->base_dev.dev, "Error in i2c bus manager creation\n");
+		dev_err(i2c_dev->base_dev.dev, "Failed to create lwis_i2c_kthread");
 		lwis_base_unprobe(&i2c_dev->base_dev);
 		goto error_probe;
+	}
+
+	if (i2c_dev->base_dev.transaction_thread_priority != 0) {
+		ret = lwis_set_kthread_priority(&i2c_dev->base_dev,
+						i2c_dev->base_dev.transaction_worker_thread,
+						i2c_dev->base_dev.transaction_thread_priority);
+		if (ret) {
+			dev_err(i2c_dev->base_dev.dev,
+				"Failed to set LWIS I2C transaction kthread priority (%d)", ret);
+			lwis_base_unprobe(&i2c_dev->base_dev);
+			goto error_probe;
+		}
 	}
 
 	dev_info(i2c_dev->base_dev.dev, "I2C Device Probe: Success\n");
@@ -360,8 +372,6 @@ int __init lwis_i2c_device_init(void)
 
 	pr_info("I2C device initialization\n");
 
-	lwis_i2c_bus_manager_list_initialize();
-
 	ret = platform_driver_register(&lwis_driver);
 	if (ret) {
 		pr_err("platform_driver_register failed: %d\n", ret);
@@ -376,8 +386,6 @@ int __init lwis_i2c_device_init(void)
 
 int lwis_i2c_device_deinit(void)
 {
-	lwis_i2c_bus_manager_list_deinitialize();
-
 	platform_driver_unregister(&lwis_driver);
 	return 0;
 }

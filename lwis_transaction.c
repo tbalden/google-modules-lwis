@@ -27,7 +27,6 @@
 #include "lwis_io_entry.h"
 #include "lwis_ioreg.h"
 #include "lwis_util.h"
-#include "lwis_i2c_bus_manager.h"
 
 #define CREATE_TRACE_POINTS
 #include "lwis_trace.h"
@@ -187,7 +186,7 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 						   /*use_read_barrier=*/false,
 						   /*use_write_barrier=*/true);
 	}
-	lwis_i2c_bus_manager_lock_i2c_bus(lwis_dev);
+
 	for (i = 0; i < info->num_io_entries; ++i) {
 		entry = &info->io_entries[i];
 		if (entry->type == LWIS_IO_ENTRY_WRITE ||
@@ -287,7 +286,6 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 		resp->completion_index = i;
 	}
 
-	lwis_i2c_bus_manager_unlock_i2c_bus(lwis_dev);
 	if (lwis_transaction_debug) {
 		process_duration_ns = ktime_to_ns(lwis_get_time() - process_timestamp);
 	}
@@ -441,16 +439,11 @@ int lwis_transaction_client_flush(struct lwis_client *client)
 	int i;
 	struct hlist_node *tmp;
 	struct lwis_transaction_event_list *it_evt_list;
-	struct lwis_device *lwis_dev = NULL;
-	struct lwis_i2c_bus_manager *i2c_bus_manager = NULL;
 
 	if (!client) {
 		pr_err("Client pointer cannot be NULL while flushing transactions.\n");
 		return -ENODEV;
 	}
-
-	lwis_dev = client->lwis_dev;
-	i2c_bus_manager = lwis_i2c_bus_manager_get_manager(lwis_dev);
 
 	spin_lock_irqsave(&client->transaction_lock, flags);
 	hash_for_each_safe (client->transaction_list, i, tmp, it_evt_list, node) {
@@ -472,13 +465,8 @@ int lwis_transaction_client_flush(struct lwis_client *client)
 	}
 	spin_unlock_irqrestore(&client->transaction_lock, flags);
 
-	if (i2c_bus_manager) {
-		lwis_i2c_bus_manager_flush_i2c_worker(lwis_dev);
-	} else {
-		if (client->lwis_dev->transaction_worker_thread) {
-			kthread_flush_worker(&client->lwis_dev->transaction_worker);
-		}
-	}
+	if (client->lwis_dev->transaction_worker_thread)
+		kthread_flush_worker(&client->lwis_dev->transaction_worker);
 
 	spin_lock_irqsave(&client->transaction_lock, flags);
 	/* The transaction queue should be empty after canceling all transactions,
@@ -711,24 +699,12 @@ static int queue_transaction_locked(struct lwis_client *client,
 {
 	struct lwis_transaction_event_list *event_list;
 	struct lwis_transaction_info_v2 *info = &transaction->info;
-	struct lwis_device *lwis_dev = client->lwis_dev;
-	struct lwis_i2c_bus_manager *i2c_bus_manager = lwis_i2c_bus_manager_get_manager(lwis_dev);
 
 	if (transaction->queue_immediately) {
 		/* Immediate trigger. */
 		list_add_tail(&transaction->process_queue_node, &client->transaction_process_queue);
-		if (i2c_bus_manager) {
-			if (!lwis_i2c_bus_manager_enqueue_transfer_request(i2c_bus_manager,
-									   &client->lwis_dev)) {
-				kthread_queue_work(&i2c_bus_manager->i2c_bus_worker,
-						   &client->i2c_work);
-			} else {
-				dev_err(client->lwis_dev->dev, "Cannot queue I2C transfer\n");
-			}
-		} else {
-			kthread_queue_work(&client->lwis_dev->transaction_worker,
-					   &client->transaction_work);
-		}
+		kthread_queue_work(&client->lwis_dev->transaction_worker,
+				   &client->transaction_work);
 	} else if (lwis_triggered_by_condition(transaction)) {
 		/* Trigger by trigger conditions. */
 		add_pending_transaction(client, transaction);
@@ -843,8 +819,6 @@ int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
 	struct lwis_transaction *new_instance;
 	int64_t trigger_counter = 0;
 	struct list_head pending_fences;
-	struct lwis_device *lwis_dev = client->lwis_dev;
-	struct lwis_i2c_bus_manager *i2c_bus_manager = lwis_i2c_bus_manager_get_manager(lwis_dev);
 
 	INIT_LIST_HEAD(&pending_fences);
 
@@ -921,18 +895,8 @@ int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
 	spin_unlock_irqrestore(&client->transaction_lock, flags);
 	/* Schedule deferred transactions */
 	if (!list_empty(&client->transaction_process_queue)) {
-		if (i2c_bus_manager) {
-			if (!lwis_i2c_bus_manager_enqueue_transfer_request(i2c_bus_manager,
-									   &client->lwis_dev)) {
-				kthread_queue_work(&i2c_bus_manager->i2c_bus_worker,
-						   &client->i2c_work);
-			} else {
-				dev_err(client->lwis_dev->dev, "Cannot queue I2C transfer\n");
-			}
-		} else {
-			kthread_queue_work(&client->lwis_dev->transaction_worker,
-					   &client->transaction_work);
-		}
+		kthread_queue_work(&client->lwis_dev->transaction_worker,
+				   &client->transaction_work);
 	}
 
 	lwis_fences_pending_signal_emit(client->lwis_dev, &pending_fences);
@@ -949,8 +913,6 @@ void lwis_transaction_fence_trigger(struct lwis_client *client, struct lwis_fenc
 	struct list_head *it_tran, *it_tran_tmp;
 	struct list_head pending_events;
 	struct list_head pending_fences;
-	struct lwis_device *lwis_dev = client->lwis_dev;
-	struct lwis_i2c_bus_manager *i2c_bus_manager = lwis_i2c_bus_manager_get_manager(lwis_dev);
 
 	if (list_empty(transaction_list)) {
 		return;
@@ -999,18 +961,8 @@ void lwis_transaction_fence_trigger(struct lwis_client *client, struct lwis_fenc
 
 	/* Schedule deferred transactions */
 	if (!list_empty(&client->transaction_process_queue)) {
-		if (i2c_bus_manager) {
-			if (!lwis_i2c_bus_manager_enqueue_transfer_request(i2c_bus_manager,
-									   &client->lwis_dev)) {
-				kthread_queue_work(&i2c_bus_manager->i2c_bus_worker,
-						   &client->i2c_work);
-			} else {
-				dev_err(client->lwis_dev->dev, "Cannot queue I2C transfer\n");
-			}
-		} else {
-			kthread_queue_work(&client->lwis_dev->transaction_worker,
-					   &client->transaction_work);
-		}
+		kthread_queue_work(&client->lwis_dev->transaction_worker,
+				   &client->transaction_work);
 	}
 
 	lwis_pending_events_emit(client->lwis_dev, &pending_events);
