@@ -718,7 +718,13 @@ static int queue_transaction_locked(struct lwis_client *client,
 		/* Immediate trigger. */
 		list_add_tail(&transaction->process_queue_node, &client->transaction_process_queue);
 		if (i2c_bus_manager) {
-			kthread_queue_work(&i2c_bus_manager->i2c_bus_worker, &client->i2c_work);
+			if (!lwis_i2c_bus_manager_enqueue_transfer_request(i2c_bus_manager,
+									   &client->lwis_dev)) {
+				kthread_queue_work(&i2c_bus_manager->i2c_bus_worker,
+						   &client->i2c_work);
+			} else {
+				dev_err(client->lwis_dev->dev, "Cannot queue I2C transfer\n");
+			}
 		} else {
 			kthread_queue_work(&client->lwis_dev->transaction_worker,
 					   &client->transaction_work);
@@ -916,7 +922,13 @@ int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
 	/* Schedule deferred transactions */
 	if (!list_empty(&client->transaction_process_queue)) {
 		if (i2c_bus_manager) {
-			kthread_queue_work(&i2c_bus_manager->i2c_bus_worker, &client->i2c_work);
+			if (!lwis_i2c_bus_manager_enqueue_transfer_request(i2c_bus_manager,
+									   &client->lwis_dev)) {
+				kthread_queue_work(&i2c_bus_manager->i2c_bus_worker,
+						   &client->i2c_work);
+			} else {
+				dev_err(client->lwis_dev->dev, "Cannot queue I2C transfer\n");
+			}
 		} else {
 			kthread_queue_work(&client->lwis_dev->transaction_worker,
 					   &client->transaction_work);
@@ -988,7 +1000,13 @@ void lwis_transaction_fence_trigger(struct lwis_client *client, struct lwis_fenc
 	/* Schedule deferred transactions */
 	if (!list_empty(&client->transaction_process_queue)) {
 		if (i2c_bus_manager) {
-			kthread_queue_work(&i2c_bus_manager->i2c_bus_worker, &client->i2c_work);
+			if (!lwis_i2c_bus_manager_enqueue_transfer_request(i2c_bus_manager,
+									   &client->lwis_dev)) {
+				kthread_queue_work(&i2c_bus_manager->i2c_bus_worker,
+						   &client->i2c_work);
+			} else {
+				dev_err(client->lwis_dev->dev, "Cannot queue I2C transfer\n");
+			}
 		} else {
 			kthread_queue_work(&client->lwis_dev->transaction_worker,
 					   &client->transaction_work);
