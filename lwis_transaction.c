@@ -921,12 +921,11 @@ void lwis_transaction_fence_trigger(struct lwis_client *client, struct lwis_fenc
 	INIT_LIST_HEAD(&pending_events);
 	INIT_LIST_HEAD(&pending_fences);
 
+	spin_lock_irqsave(&client->transaction_lock, flags);
 	list_for_each_safe (it_tran, it_tran_tmp, transaction_list) {
 		transaction_id = list_entry(it_tran, struct lwis_pending_transaction_id, list_node);
 		list_del(&transaction_id->list_node);
-		spin_lock_irqsave(&client->transaction_lock, flags);
 		transaction = pending_transaction_peek(client, transaction_id->id);
-		spin_unlock_irqrestore(&client->transaction_lock, flags);
 		if (transaction == NULL) {
 			/* It means the transaction is already executed or is canceled */
 			if (lwis_fence_debug) {
@@ -936,7 +935,6 @@ void lwis_transaction_fence_trigger(struct lwis_client *client, struct lwis_fenc
 					fence->fd, transaction_id->id);
 			}
 		} else {
-			spin_lock_irqsave(&client->transaction_lock, flags);
 			if (lwis_fence_triggered_condition_ready(transaction, fence->status)) {
 				hash_del(&transaction->pending_map_node);
 				if (fence->status == 0) {
@@ -954,10 +952,10 @@ void lwis_transaction_fence_trigger(struct lwis_client *client, struct lwis_fenc
 							   &pending_fences);
 				}
 			}
-			spin_unlock_irqrestore(&client->transaction_lock, flags);
 		}
 		kfree(transaction_id);
 	}
+	spin_unlock_irqrestore(&client->transaction_lock, flags);
 
 	/* Schedule deferred transactions */
 	if (!list_empty(&client->transaction_process_queue)) {
