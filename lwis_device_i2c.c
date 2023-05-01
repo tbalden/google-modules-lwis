@@ -7,7 +7,6 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
-
 #define pr_fmt(fmt) KBUILD_MODNAME "-i2c-dev: " fmt
 
 #include "lwis_device_i2c.h"

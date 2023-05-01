@@ -17,6 +17,17 @@
 #include "lwis_periodic_io.h"
 #include "lwis_transaction.h"
 
+/* enum lwis_i2c_device_priority_level:
+ * Defines the I2C device priority level
+ * in which the requests will be executed
+ */
+enum lwis_i2c_device_priority_level {
+	I2C_DEVICE_HIGH_PRIORITY = 0,
+	I2C_DEVICE_MEDIUM_PRIORITY = 1,
+	I2C_DEVICE_LOW_PRIORITY = 2,
+	I2C_MAX_PRIORITY_LEVELS = 3
+};
+
 // Forward declaration
 struct lwis_i2c_device;
 
@@ -45,7 +56,7 @@ struct lwis_i2c_process_queue {
 	/* Head node for the process queue */
 	struct list_head head;
 	/* Total number of devices that are queued to be processed */
-	int number_of_requests;
+	int number_of_nodes;
 };
 
 /*
@@ -67,7 +78,7 @@ struct lwis_i2c_bus_manager {
 	struct kthread_worker i2c_bus_worker;
 	struct task_struct *i2c_bus_worker_thread;
 	/* Queue of all I2C devices that have data to transfer in their process queues */
-	struct lwis_i2c_process_queue i2c_bus_process_queue;
+	struct lwis_i2c_process_queue i2c_bus_process_queue[I2C_MAX_PRIORITY_LEVELS];
 	/* List of I2C devices using this bus */
 	struct list_head i2c_connected_devices;
 	/* Total number of physically connected devices to the bus
@@ -94,13 +105,14 @@ void lwis_i2c_bus_manager_disconnect(struct lwis_device *lwis_dev);
 
 void lwis_i2c_bus_manager_process_worker_queue(struct lwis_client *client);
 
-int lwis_i2c_bus_manager_enqueue_transfer_request(struct lwis_i2c_bus_manager *i2c_bus_manager,
-						  struct lwis_device **lwis_dev);
-
 void lwis_i2c_bus_manager_flush_i2c_worker(struct lwis_device *lwis_dev);
 
 void lwis_i2c_bus_manager_list_initialize(void);
 
 void lwis_i2c_bus_manager_list_deinitialize(void);
+
+int lwis_i2c_bus_manager_connect_client(struct lwis_client *connecting_client);
+
+void lwis_i2c_bus_manager_disconnect_client(struct lwis_client *disconnecting_client);
 
 #endif /* LWIS_I2C_BUS_MANAGER_H */

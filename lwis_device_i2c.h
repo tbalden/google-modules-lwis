@@ -36,6 +36,7 @@ struct lwis_i2c_device {
 	struct mutex *group_i2c_lock;
 	/* Pointer to the I2C bus manager for this device */
 	struct lwis_i2c_bus_manager *i2c_bus_manager;
+	int device_priority;
 };
 
 int lwis_i2c_device_deinit(void);
