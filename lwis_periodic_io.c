@@ -340,6 +340,7 @@ void lwis_process_periodic_io_in_queue(struct lwis_client *client)
 			process_io_entries(client, periodic_io_proxy, &pending_events);
 			spin_lock_irqsave(&client->periodic_io_lock, flags);
 		}
+		lwis_allocator_free(client->lwis_dev, periodic_io_proxy);
 	}
 	spin_unlock_irqrestore(&client->periodic_io_lock, flags);
 	lwis_pending_events_emit(client->lwis_dev, &pending_events);
