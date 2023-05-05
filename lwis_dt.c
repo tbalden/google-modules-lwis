@@ -1220,6 +1220,19 @@ static int parse_i2c_lock_group_id(struct lwis_i2c_device *i2c_dev)
 	return 0;
 }
 
+static int parse_transaction_process_limit(struct lwis_device *lwis_dev)
+{
+	struct device_node *dev_node;
+
+	lwis_dev->transaction_process_limit = 0;
+	dev_node = lwis_dev->k_dev->of_node;
+
+	of_property_read_u32(dev_node, "transaction-process-limit",
+			     &lwis_dev->transaction_process_limit);
+
+	return 0;
+}
+
 int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 {
 	struct device *dev;
@@ -1350,6 +1363,7 @@ int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 	parse_access_mode(lwis_dev);
 	parse_thread_priority(lwis_dev);
 	parse_bitwidths(lwis_dev);
+	parse_transaction_process_limit(lwis_dev);
 
 	lwis_dev->bts_scenario_name = NULL;
 	of_property_read_string(dev_node, "bts-scenario", &lwis_dev->bts_scenario_name);

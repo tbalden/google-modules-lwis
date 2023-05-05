@@ -18,7 +18,8 @@ struct lwis_device;
 struct lwis_client;
 struct lwis_fence;
 
-/* Transaction entry. Each entry belongs to two queues:
+/*
+ * Transaction entry. Each entry belongs to two queues:
  * 1) Event list: Transactions are sorted by event IDs. This is to search for
  *    the appropriate transactions to trigger.
  * 2) Process queue: When it's time to process, the transaction will be put
@@ -47,6 +48,11 @@ struct lwis_transaction {
 	struct list_head completion_fence_list;
 	/* Precondition fence file pointer */
 	struct file *precondition_fence_fp;
+	/* If the transaction has more entries to process than the transaction_process_limit
+	   for the processing device, then this will save the number of entries that are
+	   remaining to be processed after a given transaction process cycle
+	*/
+	int remaining_entries_to_process;
 };
 
 /* For debugging purposes, keeps track of the transaction information, as
