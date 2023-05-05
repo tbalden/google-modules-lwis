@@ -294,6 +294,8 @@ struct lwis_device {
 	/* Worker thread */
 	struct kthread_worker transaction_worker;
 	struct task_struct *transaction_worker_thread;
+	/* Limit on number of transactions to be processed at a time */
+	int transaction_process_limit;
 };
 
 /*

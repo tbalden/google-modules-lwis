@@ -1202,6 +1202,7 @@ static int construct_transaction_from_cmd(struct lwis_client *client, uint32_t c
 
 	k_transaction->resp = NULL;
 	k_transaction->is_weak_transaction = false;
+	k_transaction->remaining_entries_to_process = k_transaction->info.num_io_entries;
 	INIT_LIST_HEAD(&k_transaction->event_list_node);
 	INIT_LIST_HEAD(&k_transaction->process_queue_node);
 	INIT_LIST_HEAD(&k_transaction->completion_fence_list);
