@@ -114,11 +114,12 @@ static void save_transaction_to_history(struct lwis_client *client,
 	}
 }
 
-void lwis_transaction_free(struct lwis_device *lwis_dev, struct lwis_transaction *transaction)
+void lwis_transaction_free(struct lwis_device *lwis_dev, struct lwis_transaction **ptransaction)
 {
 	int i;
 	struct lwis_fence_pending_signal *pending_fence;
 	struct list_head *it_fence, *it_fence_tmp;
+	struct lwis_transaction *transaction =  *ptransaction;
 
 	if (transaction->is_weak_transaction) {
 		kfree(transaction);
@@ -152,10 +153,10 @@ void lwis_transaction_free(struct lwis_device *lwis_dev, struct lwis_transaction
 		kfree(transaction->resp);
 	}
 	kfree(transaction);
-	transaction = NULL;
+	*ptransaction = NULL;
 }
 
-static int process_transaction(struct lwis_client *client, struct lwis_transaction *transaction,
+static int process_transaction(struct lwis_client *client, struct lwis_transaction **ptransaction,
 			       struct list_head *pending_events, struct list_head *pending_fences,
 			       bool skip_err, bool check_transaction_limit)
 {
@@ -164,6 +165,7 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 	int pending_status;
 	struct lwis_io_entry *entry = NULL;
 	struct lwis_device *lwis_dev = client->lwis_dev;
+	struct lwis_transaction *transaction = *ptransaction;
 	struct lwis_transaction_info_v2 *info = &transaction->info;
 	struct lwis_transaction_response_header *resp = transaction->resp;
 	size_t resp_size;
@@ -417,18 +419,19 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 		kfree(transaction);
 		transaction = NULL;
 	} else {
-		lwis_transaction_free(lwis_dev, transaction);
+		lwis_transaction_free(lwis_dev, ptransaction);
 	}
 	spin_unlock_irqrestore(&client->transaction_lock, flags);
 
 	return ret;
 }
 
-static void cancel_transaction(struct lwis_device *lwis_dev, struct lwis_transaction *transaction,
+static void cancel_transaction(struct lwis_device *lwis_dev, struct lwis_transaction **ptransaction,
 			       int error_code, struct list_head *pending_events,
 			       struct list_head *pending_fences)
 {
 	int pending_status;
+	struct lwis_transaction *transaction = *ptransaction;
 	struct lwis_transaction_info_v2 *info = &transaction->info;
 	struct lwis_transaction_response_header resp;
 	resp.id = info->id;
@@ -438,7 +441,7 @@ static void cancel_transaction(struct lwis_device *lwis_dev, struct lwis_transac
 	resp.completion_index = -1;
 
 	if (transaction->is_weak_transaction) {
-		lwis_transaction_free(lwis_dev, transaction);
+		lwis_transaction_free(lwis_dev, ptransaction);
 		return;
 	}
 
@@ -451,7 +454,7 @@ static void cancel_transaction(struct lwis_device *lwis_dev, struct lwis_transac
 		pending_status = error_code == -ECANCELED ? 1 : error_code;
 		lwis_pending_fences_move_all(lwis_dev, transaction, pending_fences, pending_status);
 	}
-	lwis_transaction_free(lwis_dev, transaction);
+	lwis_transaction_free(lwis_dev, ptransaction);
 }
 
 void lwis_process_transactions_in_queue(struct lwis_client *client)
@@ -470,12 +473,12 @@ void lwis_process_transactions_in_queue(struct lwis_client *client)
 		transaction = list_entry(it_tran, struct lwis_transaction, process_queue_node);
 		if (transaction->resp->error_code) {
 			list_del(&transaction->process_queue_node);
-			cancel_transaction(client->lwis_dev, transaction,
+			cancel_transaction(client->lwis_dev, &transaction,
 					   transaction->resp->error_code, &pending_events,
 					   &pending_fences);
 		} else {
 			spin_unlock_irqrestore(&client->transaction_lock, flags);
-			process_transaction(client, transaction, &pending_events, &pending_fences,
+			process_transaction(client, &transaction, &pending_events, &pending_fences,
 					    /*skip_err=*/false, /*check_transaction_limit=*/true);
 			spin_lock_irqsave(&client->transaction_lock, flags);
 
@@ -538,7 +541,7 @@ static void cancel_all_transactions_in_queue_locked(struct lwis_client *client,
 			transaction =
 				list_entry(it_tran, struct lwis_transaction, process_queue_node);
 			list_del(&transaction->process_queue_node);
-			cancel_transaction(client->lwis_dev, transaction, -ECANCELED, NULL, NULL);
+			cancel_transaction(client->lwis_dev, &transaction, -ECANCELED, NULL, NULL);
 		}
 	}
 }
@@ -571,13 +574,13 @@ int lwis_transaction_client_flush(struct lwis_client *client)
 		list_for_each_safe (it_tran, it_tran_tmp, &it_evt_list->list) {
 			transaction = list_entry(it_tran, struct lwis_transaction, event_list_node);
 			list_del(&transaction->event_list_node);
-			cancel_transaction(client->lwis_dev, transaction, -ECANCELED, NULL, NULL);
+			cancel_transaction(client->lwis_dev, &transaction, -ECANCELED, NULL, NULL);
 		}
 		hash_del(&it_evt_list->node);
 		kfree(it_evt_list);
 	}
 	hash_for_each_safe (client->pending_transactions, i, tmp, transaction, pending_map_node) {
-		cancel_transaction(client->lwis_dev, transaction, -ECANCELED, NULL, NULL);
+		cancel_transaction(client->lwis_dev, &transaction, -ECANCELED, NULL, NULL);
 		hash_del(&transaction->pending_map_node);
 	}
 	spin_unlock_irqrestore(&client->transaction_lock, flags);
@@ -626,10 +629,10 @@ int lwis_transaction_client_cleanup(struct lwis_client *client)
 		}
 		list_del(&transaction->event_list_node);
 		if (transaction->resp->error_code || client->lwis_dev->enabled == 0) {
-			cancel_transaction(client->lwis_dev, transaction, -ECANCELED, NULL, NULL);
+			cancel_transaction(client->lwis_dev, &transaction, -ECANCELED, NULL, NULL);
 		} else {
 			spin_unlock_irqrestore(&client->transaction_lock, flags);
-			process_transaction(client, transaction,
+			process_transaction(client, &transaction,
 					    /*pending_events=*/NULL,
 					    /*pending_fences=*/NULL,
 					    /*skip_err=*/true,
@@ -933,7 +936,7 @@ static void defer_transaction_locked(struct lwis_client *client,
 
 	if (transaction->info.run_in_event_context) {
 		spin_unlock_irqrestore(&client->transaction_lock, flags);
-		process_transaction(client, transaction, pending_events, pending_fences,
+		process_transaction(client, &transaction, pending_events, pending_fences,
 				    /*skip_err=*/false, /*check_transaction_limit=*/false);
 		spin_lock_irqsave(&client->transaction_lock, flags);
 	} else {
@@ -1088,7 +1091,7 @@ void lwis_transaction_fence_trigger(struct lwis_client *client, struct lwis_fenc
 							fence->fd, transaction->info.id);
 					}
 				} else {
-					cancel_transaction(client->lwis_dev, transaction,
+					cancel_transaction(client->lwis_dev, &transaction,
 							   -ECANCELED, &pending_events,
 							   &pending_fences);
 				}

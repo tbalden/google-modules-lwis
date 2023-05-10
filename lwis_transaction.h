@@ -87,7 +87,7 @@ void lwis_transaction_fence_trigger(struct lwis_client *client, struct lwis_fenc
 
 int lwis_transaction_cancel(struct lwis_client *client, int64_t id);
 
-void lwis_transaction_free(struct lwis_device *lwis_dev, struct lwis_transaction *transaction);
+void lwis_transaction_free(struct lwis_device *lwis_dev, struct lwis_transaction **ptransaction);
 
 /* Expects lwis_client->transaction_lock to be acquired before calling
  * the following functions. */
