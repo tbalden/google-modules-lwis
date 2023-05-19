@@ -481,24 +481,28 @@ static int lwis_top_device_probe(struct platform_device *plat_dev)
 {
 	int ret = 0;
 	struct lwis_top_device *top_dev;
+	struct device *dev = &plat_dev->dev;
 
 	/* Allocate top device specific data construct */
-	top_dev = kzalloc(sizeof(struct lwis_top_device), GFP_KERNEL);
+	top_dev = devm_kzalloc(dev, sizeof(struct lwis_top_device), GFP_KERNEL);
 	if (!top_dev) {
-		pr_err("Failed to allocate top device structure\n");
+		dev_err(dev, "Failed to allocate top device structure\n");
 		return -ENOMEM;
 	}
 
 	top_dev->base_dev.type = DEVICE_TYPE_TOP;
 	top_dev->base_dev.vops = top_vops;
 	top_dev->base_dev.subscribe_ops = top_subscribe_ops;
+	top_dev->base_dev.plat_dev = plat_dev;
+	top_dev->base_dev.k_dev = &plat_dev->dev;
 
 	/* Call the base device probe function */
-	ret = lwis_base_probe(&top_dev->base_dev, plat_dev);
+	ret = lwis_base_probe(&top_dev->base_dev);
 	if (ret) {
-		pr_err("Error in lwis base probe\n");
+		dev_err(dev, "Error in lwis base probe\n");
 		goto error_probe;
 	}
+	platform_set_drvdata(plat_dev, &top_dev->base_dev);
 
 	/* Call top device specific setup function */
 	ret = lwis_top_device_setup(top_dev);
@@ -511,20 +515,18 @@ static int lwis_top_device_probe(struct platform_device *plat_dev)
 	lwis_top_event_subscribe_init(top_dev);
 
 	kthread_init_worker(&top_dev->subscribe_worker);
-	top_dev->subscribe_worker_thread = kthread_run(kthread_worker_fn,
-			&top_dev->subscribe_worker, LWIS_SUBSCRIBER_THREAD_NAME);
-	if (IS_ERR(top_dev->subscribe_worker_thread)) {
+	top_dev->subscribe_worker_thread = kthread_run(
+		kthread_worker_fn, &top_dev->subscribe_worker, LWIS_SUBSCRIBER_THREAD_NAME);
+	if (IS_ERR_OR_NULL(top_dev->subscribe_worker_thread)) {
 		dev_err(top_dev->base_dev.dev, "subscribe kthread_run failed\n");
 		goto error_probe;
 	}
 
-	ret = lwis_set_kthread_priority(&top_dev->base_dev,
-		top_dev->subscribe_worker_thread,
-		SUBSCRIBE_THREAD_PRIORITY);
+	ret = lwis_set_kthread_priority(&top_dev->base_dev, top_dev->subscribe_worker_thread,
+					SUBSCRIBE_THREAD_PRIORITY);
 	if (ret) {
 		dev_err(top_dev->base_dev.dev,
-		"Failed to set LWIS top subscription kthread priority (%d)",
-			ret);
+			"Failed to set LWIS top subscription kthread priority (%d)", ret);
 		lwis_base_unprobe(&top_dev->base_dev);
 		goto error_probe;
 	}

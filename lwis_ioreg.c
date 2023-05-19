@@ -156,7 +156,7 @@ int lwis_ioreg_get(struct lwis_ioreg_device *ioreg_dev, int index, char *name)
 	block->name = name;
 	block->start = res->start;
 	block->size = resource_size(res);
-	block->base = devm_ioremap(&plat_dev->dev, res->start, resource_size(res));
+	block->base = devm_ioremap(ioreg_dev->base_dev.k_dev, res->start, resource_size(res));
 	if (!block->base) {
 		dev_err(ioreg_dev->base_dev.dev, "Cannot map I/O register space\n");
 		return -EINVAL;
@@ -175,7 +175,7 @@ int lwis_ioreg_put_by_idx(struct lwis_ioreg_device *ioreg_dev, int index)
 		return -ENODEV;
 	};
 
-	dev = &ioreg_dev->base_dev.plat_dev->dev;
+	dev = ioreg_dev->base_dev.k_dev;
 	list = &ioreg_dev->reg_list;
 	if (index < 0 || index >= list->count) {
 		return -EINVAL;
@@ -201,7 +201,7 @@ int lwis_ioreg_put_by_name(struct lwis_ioreg_device *ioreg_dev, char *name)
 		return -ENODEV;
 	};
 
-	dev = &ioreg_dev->base_dev.plat_dev->dev;
+	dev = ioreg_dev->base_dev.k_dev;
 	list = &ioreg_dev->reg_list;
 	bidx = find_block_idx_by_name(list, name);
 	if (bidx < 0) {
@@ -271,28 +271,28 @@ static int ioreg_write_batch_internal(void __iomem *base, uint64_t offset, int v
 	case 8:
 		for (i = 0; i < size_in_bytes; ++i) {
 			writeb_relaxed(*(buf + i), is_offset_fixed ? (void __iomem *)(addr) :
-									   (void __iomem *)(addr + i));
+								     (void __iomem *)(addr + i));
 		}
 		break;
 	case 16:
 		for (i = 0; i < size_in_bytes; i += 2) {
 			writew_relaxed(*(uint16_t *)(buf + i), is_offset_fixed ?
 								       (void __iomem *)(addr) :
-									     (void __iomem *)(addr + i));
+								       (void __iomem *)(addr + i));
 		}
 		break;
 	case 32:
 		for (i = 0; i < size_in_bytes; i += 4) {
 			writel_relaxed(*(uint32_t *)(buf + i), is_offset_fixed ?
 								       (void __iomem *)(addr) :
-									     (void __iomem *)(addr + i));
+								       (void __iomem *)(addr + i));
 		}
 		break;
 	case 64:
 		for (i = 0; i < size_in_bytes; i += 8) {
 			writeq_relaxed(*(uint64_t *)(buf + i), is_offset_fixed ?
 								       (void __iomem *)(addr) :
-									     (void __iomem *)(addr + i));
+								       (void __iomem *)(addr + i));
 		}
 		break;
 	default:

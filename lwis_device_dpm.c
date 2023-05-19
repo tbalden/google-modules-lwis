@@ -39,7 +39,7 @@ static struct lwis_event_subscribe_operations dpm_subscribe_ops = {
 };
 
 static int find_bts_block(struct lwis_device *lwis_dev, struct lwis_device *target_dev,
-			struct lwis_qos_setting_v2 *qos_setting)
+			  struct lwis_qos_setting_v2 *qos_setting)
 {
 	int i;
 
@@ -167,7 +167,7 @@ int lwis_dpm_update_clock(struct lwis_device *lwis_dev, struct lwis_clk_setting 
 			goto out;
 		}
 
-		if (IS_ERR(lwis_dev->clocks->clk[clk_index].clk)) {
+		if (IS_ERR_OR_NULL(lwis_dev->clocks->clk[clk_index].clk)) {
 			dev_err(lwis_dev->dev, "%s clk is invalid\n", lwis_dev->name);
 			ret = -EINVAL;
 			goto out;
@@ -208,12 +208,15 @@ static int lwis_dpm_device_probe(struct platform_device *plat_dev)
 	dpm_dev->base_dev.type = DEVICE_TYPE_DPM;
 	dpm_dev->base_dev.vops = dpm_vops;
 	dpm_dev->base_dev.subscribe_ops = dpm_subscribe_ops;
+	dpm_dev->base_dev.plat_dev = plat_dev;
+	dpm_dev->base_dev.k_dev = &plat_dev->dev;
 
 	/* Call the base device probe function */
-	ret = lwis_base_probe((struct lwis_device *)dpm_dev, plat_dev);
+	ret = lwis_base_probe(&dpm_dev->base_dev);
 	if (ret) {
 		dev_err(dev, "Error in lwis base probe, ret: %d\n", ret);
 	}
+	platform_set_drvdata(plat_dev, &dpm_dev->base_dev);
 
 	return ret;
 }

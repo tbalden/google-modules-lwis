@@ -101,24 +101,28 @@ static int lwis_ioreg_device_probe(struct platform_device *plat_dev)
 {
 	int ret = 0;
 	struct lwis_ioreg_device *ioreg_dev;
+	struct device *dev = &plat_dev->dev;
 
 	/* Allocate IOREG device specific data construct */
-	ioreg_dev = kzalloc(sizeof(struct lwis_ioreg_device), GFP_KERNEL);
+	ioreg_dev = devm_kzalloc(dev, sizeof(struct lwis_ioreg_device), GFP_KERNEL);
 	if (!ioreg_dev) {
-		pr_err("Failed to allocate IOREG device structure\n");
+		dev_err(dev, "Failed to allocate IOREG device structure\n");
 		return -ENOMEM;
 	}
 
 	ioreg_dev->base_dev.type = DEVICE_TYPE_IOREG;
 	ioreg_dev->base_dev.vops = ioreg_vops;
 	ioreg_dev->base_dev.subscribe_ops = ioreg_subscribe_ops;
+	ioreg_dev->base_dev.plat_dev = plat_dev;
+	ioreg_dev->base_dev.k_dev = &plat_dev->dev;
 
 	/* Call the base device probe function */
-	ret = lwis_base_probe(&ioreg_dev->base_dev, plat_dev);
+	ret = lwis_base_probe(&ioreg_dev->base_dev);
 	if (ret) {
-		pr_err("Error in lwis base probe\n");
+		dev_err(dev, "Error in lwis base probe\n");
 		goto error_probe;
 	}
+	platform_set_drvdata(plat_dev, &ioreg_dev->base_dev);
 
 	/* Call IOREG device specific setup function */
 	ret = lwis_ioreg_device_setup(ioreg_dev);
@@ -138,12 +142,11 @@ static int lwis_ioreg_device_probe(struct platform_device *plat_dev)
 
 	if (ioreg_dev->base_dev.transaction_thread_priority != 0) {
 		ret = lwis_set_kthread_priority(&ioreg_dev->base_dev,
-			ioreg_dev->base_dev.transaction_worker_thread,
-			ioreg_dev->base_dev.transaction_thread_priority);
+						ioreg_dev->base_dev.transaction_worker_thread,
+						ioreg_dev->base_dev.transaction_thread_priority);
 		if (ret) {
 			dev_err(ioreg_dev->base_dev.dev,
-				"Failed to set LWIS IOREG transaction kthread priority (%d)",
-				ret);
+				"Failed to set LWIS IOREG transaction kthread priority (%d)", ret);
 			lwis_base_unprobe(&ioreg_dev->base_dev);
 			goto error_probe;
 		}
