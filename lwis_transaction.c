@@ -181,6 +181,7 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 	int remaining_entries_to_be_processed = transaction->remaining_entries_to_process;
 	int number_of_entries_to_process_in_current_run = 0;
 	int processing_start_index = 0;
+	int processing_end_index = 0;
 
 	/*
 	 * Process all the transactions at once if:
@@ -200,8 +201,9 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 			max_transaction_entry_limit :
 			remaining_entries_to_be_processed;
 	processing_start_index = total_number_of_entries - remaining_entries_to_be_processed;
+	processing_end_index = processing_start_index + number_of_entries_to_process_in_current_run;
 	remaining_entries_to_be_processed =
-		remaining_entries_to_be_processed - max_transaction_entry_limit;
+		remaining_entries_to_be_processed - number_of_entries_to_process_in_current_run;
 
 	if (lwis_transaction_debug) {
 		process_timestamp = ktime_to_ns(lwis_get_time());
@@ -219,7 +221,7 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 						   /*use_write_barrier=*/true);
 	}
 	lwis_i2c_bus_manager_lock_i2c_bus(lwis_dev);
-	for (i = processing_start_index; i < number_of_entries_to_process_in_current_run; ++i) {
+	for (i = processing_start_index; i < processing_end_index; ++i) {
 		entry = &info->io_entries[i];
 		if (entry->type == LWIS_IO_ENTRY_WRITE ||
 		    entry->type == LWIS_IO_ENTRY_WRITE_BATCH ||
