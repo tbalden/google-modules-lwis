@@ -637,6 +637,10 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 	struct platform_device *plat_dev;
 	struct of_phandle_iterator it;
 
+	if (lwis_dev->type == DEVICE_TYPE_SPI) {
+		return 0;
+	}
+
 	plat_dev = lwis_dev->plat_dev;
 	dev_node = lwis_dev->k_dev->of_node;
 
@@ -687,7 +691,7 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 		const char *irq_reg_space = NULL, *irq_type_str = NULL;
 		bool irq_mask_reg_toggle;
 		u64 irq_src_reg;
-		u64 irq_reset_reg;
+		u64 irq_reset_reg = 0;
 		u64 irq_mask_reg;
 		u64 irq_overflow_reg = 0;
 		int irq_reg_bid = -1;
@@ -733,11 +737,7 @@ static int parse_interrupts(struct lwis_device *lwis_dev)
 			goto error_event_infos;
 		}
 
-		ret = of_property_read_u64(event_info, "irq-reset-reg", &irq_reset_reg);
-		if (ret) {
-			pr_err("Error getting irq-reset-reg from dt: %d\n", ret);
-			goto error_event_infos;
-		}
+		of_property_read_u64(event_info, "irq-reset-reg", &irq_reset_reg);
 
 		ret = of_property_read_u64(event_info, "irq-mask-reg", &irq_mask_reg);
 		if (ret) {
@@ -1413,6 +1413,11 @@ int lwis_i2c_device_parse_dt(struct lwis_i2c_device *i2c_dev)
 		return ret;
 	}
 
+	return 0;
+}
+
+int lwis_spi_device_parse_dt(struct lwis_spi_device *spi_dev)
+{
 	return 0;
 }
 

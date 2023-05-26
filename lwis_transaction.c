@@ -181,6 +181,7 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 	int remaining_entries_to_be_processed = transaction->remaining_entries_to_process;
 	int number_of_entries_to_process_in_current_run = 0;
 	int processing_start_index = 0;
+	int processing_end_index = 0;
 
 	/*
 	 * Process all the transactions at once if:
@@ -200,8 +201,9 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 			max_transaction_entry_limit :
 			remaining_entries_to_be_processed;
 	processing_start_index = total_number_of_entries - remaining_entries_to_be_processed;
+	processing_end_index = processing_start_index + number_of_entries_to_process_in_current_run;
 	remaining_entries_to_be_processed =
-		remaining_entries_to_be_processed - max_transaction_entry_limit;
+		remaining_entries_to_be_processed - number_of_entries_to_process_in_current_run;
 
 	if (lwis_transaction_debug) {
 		process_timestamp = ktime_to_ns(lwis_get_time());
@@ -219,7 +221,7 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 						   /*use_write_barrier=*/true);
 	}
 	lwis_i2c_bus_manager_lock_i2c_bus(lwis_dev);
-	for (i = processing_start_index; i < number_of_entries_to_process_in_current_run; ++i) {
+	for (i = processing_start_index; i < processing_end_index; ++i) {
 		entry = &info->io_entries[i];
 		if (entry->type == LWIS_IO_ENTRY_WRITE ||
 		    entry->type == LWIS_IO_ENTRY_WRITE_BATCH ||
@@ -928,12 +930,13 @@ new_repeating_transaction_iteration(struct lwis_client *client,
 static void defer_transaction_locked(struct lwis_client *client,
 				     struct lwis_transaction *transaction,
 				     struct list_head *pending_events,
-				     struct list_head *pending_fences, bool del_event_list_node)
+				     struct list_head *pending_fences, bool del_event_list_node,
+				     unsigned long* flags)
 {
-	unsigned long flags = 0;
 	if (del_event_list_node) {
 		list_del(&transaction->event_list_node);
 	}
+
 
 	/* I2C read/write cannot be executed in IRQ context */
 	if (in_hardirq() && client->lwis_dev->type == DEVICE_TYPE_I2C) {
@@ -942,10 +945,10 @@ static void defer_transaction_locked(struct lwis_client *client,
 	}
 
 	if (transaction->info.run_in_event_context) {
-		spin_unlock_irqrestore(&client->transaction_lock, flags);
+		spin_unlock_irqrestore(&client->transaction_lock, *flags);
 		process_transaction(client, &transaction, pending_events, pending_fences,
 				    /*skip_err=*/false, /*check_transaction_limit=*/false);
-		spin_lock_irqsave(&client->transaction_lock, flags);
+		spin_lock_irqsave(&client->transaction_lock, *flags);
 	} else {
 		list_add_tail(&transaction->process_queue_node, &client->transaction_process_queue);
 	}
@@ -1002,7 +1005,8 @@ int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
 				hash_del(&transaction->pending_map_node);
 				defer_transaction_locked(client, transaction, pending_events,
 							 &pending_fences,
-							 /* del_event_list_node */ false);
+							 /* del_event_list_node */ false,
+							 &flags);
 			}
 			continue;
 		}
@@ -1020,7 +1024,8 @@ int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
 		if (trigger_counter == LWIS_EVENT_COUNTER_ON_NEXT_OCCURRENCE ||
 		    trigger_counter == event_counter) {
 			defer_transaction_locked(client, transaction, pending_events,
-						 &pending_fences, /* del_event_list_node */ true);
+						 &pending_fences, /* del_event_list_node */ true,
+						 &flags);
 		} else if (trigger_counter == LWIS_EVENT_COUNTER_EVERY_TIME) {
 			new_instance = new_repeating_transaction_iteration(client, transaction);
 			if (!new_instance) {
@@ -1031,7 +1036,8 @@ int lwis_transaction_event_trigger(struct lwis_client *client, int64_t event_id,
 				continue;
 			}
 			defer_transaction_locked(client, new_instance, pending_events,
-						 &pending_fences, /* del_event_list_node */ false);
+						 &pending_fences, /* del_event_list_node */ false,
+						 &flags);
 		}
 	}
 
