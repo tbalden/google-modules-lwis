@@ -515,10 +515,12 @@ void lwis_process_transactions_in_queue(struct lwis_client *client)
 				 * that would indicate the transaction processing limit has reached for this
 				 * device and we stop processing its queue further
 				 */
-				dev_info(
-					client->lwis_dev->dev,
-					"Transaction processing limit reached, remaining entries to process %d\n",
-					transaction->remaining_entries_to_process);
+				if (lwis_transaction_debug) {
+					dev_info(
+						client->lwis_dev->dev,
+						"Transaction processing limit reached, remaining entries to process %d\n",
+						transaction->remaining_entries_to_process);
+				}
 
 				/*
 				 * Queue the remaining transaction again on the transaction worker/bus maanger worker
