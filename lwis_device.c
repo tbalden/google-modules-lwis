@@ -1097,8 +1097,6 @@ int lwis_dev_power_up_locked(struct lwis_device *lwis_dev)
 		}
 	}
 
-	/* Sleeping to make sure all pins are ready to go */
-	usleep_range(2000, 2000);
 	return 0;
 
 	/* Error handling */
