@@ -392,7 +392,7 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 					(void *)resp, resp_size);
 	} else {
 		/* No pending events indicates it's cleanup io_entries. */
-		if (resp->error_code) {
+		if (entry && resp->error_code) {
 			dev_err(lwis_dev->dev,
 				"Clean-up fails with error code %d, transaction %llu, io_entries[%d], entry_type %d",
 				resp->error_code, transaction->info.id, i, entry->type);
