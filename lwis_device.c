@@ -33,7 +33,6 @@
 #include "lwis_dt.h"
 #include "lwis_event.h"
 #include "lwis_gpio.h"
-#include "lwis_init.h"
 #include "lwis_ioctl.h"
 #include "lwis_periodic_io.h"
 #include "lwis_pinctrl.h"
