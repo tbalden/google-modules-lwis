@@ -491,6 +491,26 @@ void lwis_process_transactions_in_queue(struct lwis_client *client)
 
 	spin_lock_irqsave(&client->transaction_lock, flags);
 	list_for_each_safe (it_tran, it_tran_tmp, &client->transaction_process_queue) {
+		if (!client->is_enabled) {
+			if (lwis_transaction_debug) {
+				dev_info(client->lwis_dev->dev,
+					 "Client is not ready to process transactions");
+			}
+			spin_unlock_irqrestore(&client->transaction_lock, flags);
+			spin_lock_irqsave(&client->flush_lock, flags);
+			if (client->flush_state == NOT_FLUSHING) {
+				if (i2c_bus_manager) {
+					kthread_queue_work(&i2c_bus_manager->i2c_bus_worker,
+							   &client->i2c_work);
+				} else {
+					kthread_queue_work(&client->lwis_dev->transaction_worker,
+							   &client->transaction_work);
+				}
+			}
+			spin_unlock_irqrestore(&client->flush_lock, flags);
+			return;
+		}
+
 		transaction = list_entry(it_tran, struct lwis_transaction, process_queue_node);
 		if (transaction->resp->error_code) {
 			list_del(&transaction->process_queue_node);
