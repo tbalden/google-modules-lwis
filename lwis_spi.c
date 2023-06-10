@@ -267,7 +267,6 @@ static int lwis_spi_write_batch(struct lwis_spi_device *spi_dev, uint64_t offset
 	msg_bytes = offset_bytes + write_buf_size;
 	buf = kmalloc(msg_bytes, GFP_KERNEL);
 	if (!buf) {
-		dev_err(spi_dev->base_dev.dev, "Failed to allocate memory for SPI buffer\n");
 		return -ENOMEM;
 	}
 
