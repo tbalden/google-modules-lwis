@@ -581,7 +581,8 @@ int lwis_transaction_clear(struct lwis_client *client)
 }
 
 static void cancel_all_transactions_in_queue_locked(struct lwis_client *client,
-						    struct list_head *transaction_queue)
+						    struct list_head *transaction_queue,
+						    struct list_head *pending_fences)
 {
 	struct lwis_transaction *transaction;
 	struct list_head *it_tran, *it_tran_tmp;
@@ -592,8 +593,8 @@ static void cancel_all_transactions_in_queue_locked(struct lwis_client *client,
 			transaction =
 				list_entry(it_tran, struct lwis_transaction, process_queue_node);
 			list_del(&transaction->process_queue_node);
-			cancel_transaction(client->lwis_dev, &transaction, -ECANCELED, NULL, NULL,
-					   false);
+			cancel_transaction(client->lwis_dev, &transaction, -ECANCELED, NULL,
+					   pending_fences, false);
 		}
 	}
 }
@@ -608,6 +609,9 @@ int lwis_transaction_client_flush(struct lwis_client *client)
 	struct lwis_transaction_event_list *it_evt_list;
 	struct lwis_device *lwis_dev = NULL;
 	struct lwis_i2c_bus_manager *i2c_bus_manager = NULL;
+	struct list_head pending_fences;
+
+	INIT_LIST_HEAD(&pending_fences);
 
 	if (!client) {
 		pr_err("Client pointer cannot be NULL while flushing transactions.\n");
@@ -626,14 +630,15 @@ int lwis_transaction_client_flush(struct lwis_client *client)
 		list_for_each_safe (it_tran, it_tran_tmp, &it_evt_list->list) {
 			transaction = list_entry(it_tran, struct lwis_transaction, event_list_node);
 			list_del(&transaction->event_list_node);
-			cancel_transaction(client->lwis_dev, &transaction, -ECANCELED, NULL, NULL,
-					   false);
+			cancel_transaction(client->lwis_dev, &transaction, -ECANCELED, NULL,
+					   &pending_fences, false);
 		}
 		hash_del(&it_evt_list->node);
 		kfree(it_evt_list);
 	}
 	hash_for_each_safe (client->pending_transactions, i, tmp, transaction, pending_map_node) {
-		cancel_transaction(client->lwis_dev, &transaction, -ECANCELED, NULL, NULL, true);
+		cancel_transaction(client->lwis_dev, &transaction, -ECANCELED, NULL,
+				   &pending_fences, true);
 	}
 	spin_unlock_irqrestore(&client->transaction_lock, flags);
 
@@ -656,8 +661,11 @@ int lwis_transaction_client_flush(struct lwis_client *client)
 	spin_lock_irqsave(&client->transaction_lock, flags);
 	/* The transaction queue should be empty after canceling all transactions,
 	 * but check anyway. */
-	cancel_all_transactions_in_queue_locked(client, &client->transaction_process_queue);
+	cancel_all_transactions_in_queue_locked(client, &client->transaction_process_queue,
+						&pending_fences);
 	spin_unlock_irqrestore(&client->transaction_lock, flags);
+
+	lwis_fences_pending_signal_emit(client->lwis_dev, &pending_fences);
 
 	return 0;
 }
@@ -668,6 +676,9 @@ int lwis_transaction_client_cleanup(struct lwis_client *client)
 	struct list_head *it_tran, *it_tran_tmp;
 	struct lwis_transaction *transaction;
 	struct lwis_transaction_event_list *it_evt_list;
+	struct list_head pending_fences;
+
+	INIT_LIST_HEAD(&pending_fences);
 
 	spin_lock_irqsave(&client->transaction_lock, flags);
 	/* Perform client defined clean-up routine. */
@@ -689,8 +700,8 @@ int lwis_transaction_client_cleanup(struct lwis_client *client)
 		}
 		list_del(&transaction->event_list_node);
 		if (transaction->resp->error_code || client->lwis_dev->enabled == 0) {
-			cancel_transaction(client->lwis_dev, &transaction, -ECANCELED, NULL, NULL,
-					   false);
+			cancel_transaction(client->lwis_dev, &transaction, -ECANCELED, NULL,
+					   &pending_fences, false);
 		} else {
 			spin_unlock_irqrestore(&client->transaction_lock, flags);
 			process_transaction(client, &transaction,
@@ -705,6 +716,9 @@ int lwis_transaction_client_cleanup(struct lwis_client *client)
 	kfree(it_evt_list);
 
 	spin_unlock_irqrestore(&client->transaction_lock, flags);
+
+	lwis_fences_pending_signal_emit(client->lwis_dev, &pending_fences);
+
 	return 0;
 }
 
