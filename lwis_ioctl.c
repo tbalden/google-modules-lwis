@@ -1619,9 +1619,11 @@ static void flash_set(bool on) {
             ret = lwis_dev_flash->vops.register_io(lwis_dev_flash, &on_e_3, lwis_dev_flash->native_value_bitwidth);
             ret = lwis_dev_flash->vops.register_io(lwis_dev_flash, &on_e_4, lwis_dev_flash->native_value_bitwidth);
             ret = lwis_dev_flash->vops.register_io(lwis_dev_flash, &on_e_5, lwis_dev_flash->native_value_bitwidth);
+            if (ret) pr_info("%s ERR ret = %d\n",__func__,ret);
         } else {
             int ret = 0;
             ret = lwis_dev_flash->vops.register_io(lwis_dev_flash, &off_e_1, lwis_dev_flash->native_value_bitwidth);
+            if (ret) pr_info("%s ERR ret = %d\n",__func__,ret);
         }
         mutex_unlock(&lock_flash_set);
 }
