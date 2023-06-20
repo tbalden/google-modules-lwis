@@ -492,6 +492,11 @@ void lwis_process_transactions_in_queue(struct lwis_client *client)
 	spin_lock_irqsave(&client->transaction_lock, flags);
 	list_for_each_safe (it_tran, it_tran_tmp, &client->transaction_process_queue) {
 		if (!client->is_enabled) {
+			/*
+			 * If client is not enabled, then we just need to requeue
+			 * the transaction until the client is enabled. This will
+			 * ensure that we don't loose the submitted transactions.
+			*/
 			if (lwis_transaction_debug) {
 				dev_info(client->lwis_dev->dev,
 					 "Client is not ready to process transactions");
@@ -544,6 +549,8 @@ void lwis_process_transactions_in_queue(struct lwis_client *client)
 				/*
 				 * Queue the remaining transaction again on the transaction worker/bus maanger worker
 				 * to be processed again later if the client is not flushing
+				 * If the client is flushing, cancel the remaining transaction
+				 * and delete from the process queue node.
 				 */
 				spin_lock_irqsave(&client->flush_lock, flags);
 				if (client->flush_state == NOT_FLUSHING) {
@@ -566,6 +573,10 @@ void lwis_process_transactions_in_queue(struct lwis_client *client)
 								client->lwis_dev->dev,
 								"Client is flushing, aborting the remaining transaction");
 					}
+					list_del(&transaction->process_queue_node);
+					cancel_transaction(client->lwis_dev, &transaction,
+					   transaction->resp->error_code, &pending_events,
+					   &pending_fences, false);
 				}
 				spin_unlock_irqrestore(&client->flush_lock, flags);
 				break;
