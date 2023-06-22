@@ -56,7 +56,6 @@ static struct lwis_transaction_event_list *event_list_create(struct lwis_client 
 	struct lwis_transaction_event_list *event_list =
 		kmalloc(sizeof(struct lwis_transaction_event_list), GFP_ATOMIC);
 	if (!event_list) {
-		dev_err(client->lwis_dev->dev, "Cannot allocate new event list\n");
 		return NULL;
 	}
 	event_list->event_id = event_id;
@@ -717,7 +716,6 @@ int lwis_trigger_event_add_weak_transaction(struct lwis_client *client, int64_t 
 
 	weak_transaction = kmalloc(sizeof(struct lwis_transaction), GFP_ATOMIC);
 	if (!weak_transaction) {
-		dev_err(client->lwis_dev->dev, "Cannot allocate weak transaction\n");
 		return -ENOMEM;
 	}
 	weak_transaction->is_weak_transaction = true;
@@ -869,7 +867,6 @@ static int prepare_response_locked(struct lwis_client *client, struct lwis_trans
 	 * holding onto a spinlock. */
 	transaction->resp = kmalloc(resp_size, GFP_ATOMIC);
 	if (!transaction->resp) {
-		dev_err(client->lwis_dev->dev, "Cannot allocate transaction response\n");
 		return -ENOMEM;
 	}
 	transaction->resp->id = info->id;
@@ -951,8 +948,6 @@ new_repeating_transaction_iteration(struct lwis_client *client,
 	/* Construct a new instance for repeating transactions */
 	new_instance = kmalloc(sizeof(struct lwis_transaction), GFP_ATOMIC);
 	if (!new_instance) {
-		dev_err(client->lwis_dev->dev,
-			"Failed to allocate repeating transaction instance\n");
 		return NULL;
 	}
 	memcpy(&new_instance->info, &transaction->info, sizeof(transaction->info));
@@ -963,8 +958,6 @@ new_repeating_transaction_iteration(struct lwis_client *client,
 			   GFP_ATOMIC);
 	if (!resp_buf) {
 		kfree(new_instance);
-		dev_err(client->lwis_dev->dev,
-			"Failed to allocate repeating transaction response\n");
 		return NULL;
 	}
 	memcpy(resp_buf, transaction->resp, sizeof(struct lwis_transaction_response_header));

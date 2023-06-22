@@ -39,7 +39,6 @@ static struct lwis_buffer_enrollment_list *enrollment_list_create(struct lwis_cl
 	struct lwis_buffer_enrollment_list *enrollment_list =
 		kmalloc(sizeof(struct lwis_buffer_enrollment_list), GFP_KERNEL);
 	if (!enrollment_list) {
-		dev_err(client->lwis_dev->dev, "Cannot allocate new entrollment list\n");
 		return NULL;
 	}
 	enrollment_list->vaddr = dma_vaddr;
