@@ -492,11 +492,12 @@ void lwis_process_transactions_in_queue(struct lwis_client *client)
 
 	spin_lock_irqsave(&client->transaction_lock, flags);
 	list_for_each_safe (it_tran, it_tran_tmp, &client->transaction_process_queue) {
-		if (!client->is_enabled) {
+		if (!client->is_enabled && lwis_dev->type != DEVICE_TYPE_TOP) {
 			/*
 			 * If client is not enabled, then we just need to requeue
 			 * the transaction until the client is enabled. This will
 			 * ensure that we don't loose the submitted transactions.
+			 * Top device does not require enabling.
 			*/
 			if (lwis_transaction_debug) {
 				dev_info(client->lwis_dev->dev,
