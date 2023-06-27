@@ -194,7 +194,8 @@ static int process_transaction(struct lwis_client *client, struct lwis_transacti
 	 * later and therefore all entries need to be processed in the same run
 	*/
 	if ((lwis_dev->transaction_process_limit <= 0) ||
-	    (transaction->info.run_in_event_context) || (skip_err == true)) {
+	    (transaction->info.run_in_event_context) || (skip_err == true) ||
+	    (check_transaction_limit == false)) {
 		max_transaction_entry_limit = total_number_of_entries;
 	}
 
