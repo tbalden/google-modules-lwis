@@ -291,7 +291,7 @@ struct lwis_device {
 	/* Resume sequence information */
 	struct lwis_device_power_sequence_list *resume_sequence;
 	/* GPIOs list */
-	struct lwis_gpios_list *gpios_list;
+	struct list_head gpios_list;
 	/* GPIO interrupts list */
 	struct lwis_gpios_info irq_gpios_info;
 
