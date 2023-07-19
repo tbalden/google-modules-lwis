@@ -1092,6 +1092,17 @@ static int parse_access_mode(struct lwis_device *lwis_dev)
 	return 0;
 }
 
+static int parse_power_up_mode(struct lwis_device *lwis_dev)
+{
+	struct device_node *dev_node;
+
+	dev_node = lwis_dev->k_dev->of_node;
+
+	lwis_dev->power_up_to_suspend = of_property_read_bool(dev_node, "lwis,power-up-to-suspend");
+
+	return 0;
+}
+
 static int parse_thread_priority(struct lwis_device *lwis_dev)
 {
 	struct device_node *dev_node;
@@ -1299,6 +1310,7 @@ int lwis_base_parse_dt(struct lwis_device *lwis_dev)
 	}
 
 	parse_access_mode(lwis_dev);
+	parse_power_up_mode(lwis_dev);
 	parse_thread_priority(lwis_dev);
 	parse_bitwidths(lwis_dev);
 	parse_transaction_process_limit(lwis_dev);

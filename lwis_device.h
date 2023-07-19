@@ -294,6 +294,8 @@ struct lwis_device {
 	struct list_head gpios_list;
 	/* GPIO interrupts list */
 	struct lwis_gpios_info irq_gpios_info;
+	/* Is power up to suspend mode */
+	bool power_up_to_suspend;
 
 	/* Power management hibernation state of the device */
 	int pm_hibernation;
