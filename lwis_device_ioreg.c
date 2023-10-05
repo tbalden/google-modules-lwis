@@ -68,6 +68,7 @@ static int lwis_ioreg_device_disable(struct lwis_device *lwis_dev)
 static int lwis_ioreg_register_io(struct lwis_device *lwis_dev, struct lwis_io_entry *entry,
 				  int access_size)
 {
+	lwis_save_register_io_info(lwis_dev, entry, access_size);
 	return lwis_ioreg_io_entry_rw((struct lwis_ioreg_device *)lwis_dev, entry, access_size);
 }
 
@@ -137,24 +138,11 @@ static int lwis_ioreg_device_probe(struct platform_device *plat_dev)
 
 	if (ioreg_dev->base_dev.transaction_thread_priority != 0) {
 		ret = lwis_set_kthread_priority(&ioreg_dev->base_dev,
-			ioreg_dev->base_dev.transaction_worker_thread,
-			ioreg_dev->base_dev.transaction_thread_priority);
+						ioreg_dev->base_dev.transaction_worker_thread,
+						ioreg_dev->base_dev.transaction_thread_priority);
 		if (ret) {
 			dev_err(ioreg_dev->base_dev.dev,
-				"Failed to set LWIS IOREG transaction kthread priority (%d)",
-				ret);
-			lwis_base_unprobe(&ioreg_dev->base_dev);
-			goto error_probe;
-		}
-	}
-	if (ioreg_dev->base_dev.periodic_io_thread_priority != 0) {
-		ret = lwis_set_kthread_priority(&ioreg_dev->base_dev,
-			ioreg_dev->base_dev.periodic_io_worker_thread,
-			ioreg_dev->base_dev.periodic_io_thread_priority);
-		if (ret) {
-			dev_err(ioreg_dev->base_dev.dev,
-				"Failed to set LWIS IOREG periodic io kthread priority (%d)",
-				ret);
+				"Failed to set LWIS IOREG transaction kthread priority (%d)", ret);
 			lwis_base_unprobe(&ioreg_dev->base_dev);
 			goto error_probe;
 		}

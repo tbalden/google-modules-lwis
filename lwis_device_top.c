@@ -11,9 +11,6 @@
 #define pr_fmt(fmt) KBUILD_MODNAME "-top-dev: " fmt
 
 #include "lwis_device_top.h"
-#include "lwis_event.h"
-#include "lwis_init.h"
-#include "lwis_util.h"
 
 #include <linux/device.h>
 #include <linux/init.h>
@@ -23,13 +20,22 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 
+#include "lwis_device.h"
+#include "lwis_event.h"
+#include "lwis_init.h"
+#include "lwis_util.h"
+
 #ifdef CONFIG_OF
 #include "lwis_dt.h"
 #endif
 
 #define LWIS_DRIVER_NAME "lwis-top"
 #define LWIS_SUBSCRIBER_THREAD_NAME "lwis_s_top"
-#define LWIS_SUBSCRIBER_THREAD_PRIORITY 99
+/*
+ * RT priority needed because events need to be transferred to
+ * another device in low latency.
+*/
+#define SUBSCRIBE_THREAD_PRIORITY 99
 
 static int lwis_top_register_io(struct lwis_device *lwis_dev, struct lwis_io_entry *entry,
 				int access_size);
@@ -49,8 +55,7 @@ static int lwis_top_event_subscribe(struct lwis_device *lwis_dev, int64_t trigge
 static int lwis_top_event_unsubscribe(struct lwis_device *lwis_dev, int64_t trigger_event_id,
 				      int subscriber_device_id);
 static void lwis_top_event_notify(struct lwis_device *lwis_dev, int64_t trigger_event_id,
-				  int64_t trigger_event_count, int64_t trigger_event_timestamp,
-				  bool in_irq);
+				  int64_t trigger_event_count, int64_t trigger_event_timestamp);
 static void lwis_top_event_subscribe_release(struct lwis_device *lwis_dev);
 static struct lwis_event_subscribe_operations top_subscribe_ops = {
 	.subscribe_event = lwis_top_event_subscribe,
@@ -161,8 +166,7 @@ static void subscribe_work_func(struct kthread_work *work)
 			lwis_device_external_event_emit(subscribe_info->subscriber_dev,
 							trigger_event->trigger_event_id,
 							trigger_event->trigger_event_count,
-							trigger_event->trigger_event_timestamp,
-							false);
+							trigger_event->trigger_event_timestamp);
 		}
 		kfree(trigger_event);
 	}
@@ -170,8 +174,7 @@ static void subscribe_work_func(struct kthread_work *work)
 }
 
 static void lwis_top_event_notify(struct lwis_device *lwis_dev, int64_t trigger_event_id,
-				  int64_t trigger_event_count, int64_t trigger_event_timestamp,
-				  bool in_irq)
+				  int64_t trigger_event_count, int64_t trigger_event_timestamp)
 {
 	struct lwis_top_device *lwis_top_dev =
 		container_of(lwis_dev, struct lwis_top_device, base_dev);
@@ -192,7 +195,7 @@ static void lwis_top_event_notify(struct lwis_device *lwis_dev, int64_t trigger_
 	list_add_tail(&trigger_event->node, &lwis_top_dev->emitted_event_list_work);
 	spin_unlock_irqrestore(&lwis_top_dev->base_dev.lock, flags);
 	/* Schedule deferred subscribed events */
-	kthread_queue_work(&lwis_top_dev->base_dev.subscribe_worker, &lwis_top_dev->subscribe_work);
+	kthread_queue_work(&lwis_top_dev->subscribe_worker, &lwis_top_dev->subscribe_work);
 }
 
 static int lwis_top_event_subscribe(struct lwis_device *lwis_dev, int64_t trigger_event_id,
@@ -366,8 +369,8 @@ static void lwis_top_event_subscribe_clear(struct lwis_top_device *lwis_top_dev)
 	}
 	spin_unlock_irqrestore(&lwis_top_dev->base_dev.lock, flags);
 
-	if (lwis_top_dev->base_dev.subscribe_worker_thread) {
-		kthread_flush_worker(&lwis_top_dev->base_dev.subscribe_worker);
+	if (lwis_top_dev->subscribe_worker_thread) {
+		kthread_flush_worker(&lwis_top_dev->subscribe_worker);
 	}
 }
 
@@ -391,6 +394,7 @@ static int lwis_top_register_io(struct lwis_device *lwis_dev, struct lwis_io_ent
 		dev_err(top_dev->base_dev.dev, "IO entry is NULL.\n");
 		return -EINVAL;
 	}
+	lwis_save_register_io_info(lwis_dev, entry, access_size);
 
 	if (entry->type == LWIS_IO_ENTRY_READ) {
 		if (entry->rw.offset >= SCRATCH_MEMORY_SIZE) {
@@ -482,6 +486,7 @@ static int lwis_top_device_probe(struct platform_device *plat_dev)
 	/* Allocate top device specific data construct */
 	top_dev = kzalloc(sizeof(struct lwis_top_device), GFP_KERNEL);
 	if (!top_dev) {
+		pr_err("Failed to allocate top device structure\n");
 		return -ENOMEM;
 	}
 
@@ -492,6 +497,7 @@ static int lwis_top_device_probe(struct platform_device *plat_dev)
 	/* Call the base device probe function */
 	ret = lwis_base_probe(&top_dev->base_dev, plat_dev);
 	if (ret) {
+		pr_err("Error in lwis base probe\n");
 		goto error_probe;
 	}
 
@@ -505,11 +511,20 @@ static int lwis_top_device_probe(struct platform_device *plat_dev)
 
 	lwis_top_event_subscribe_init(top_dev);
 
-	kthread_init_worker(&top_dev->base_dev.subscribe_worker);
-	top_dev->base_dev.subscribe_worker_thread = kthread_run(kthread_worker_fn,
-			&top_dev->base_dev.subscribe_worker, LWIS_SUBSCRIBER_THREAD_NAME);
-	if (IS_ERR(top_dev->base_dev.subscribe_worker_thread)) {
+	kthread_init_worker(&top_dev->subscribe_worker);
+	top_dev->subscribe_worker_thread = kthread_run(
+		kthread_worker_fn, &top_dev->subscribe_worker, LWIS_SUBSCRIBER_THREAD_NAME);
+	if (IS_ERR_OR_NULL(top_dev->subscribe_worker_thread)) {
 		dev_err(top_dev->base_dev.dev, "subscribe kthread_run failed\n");
+		goto error_probe;
+	}
+
+	ret = lwis_set_kthread_priority(&top_dev->base_dev, top_dev->subscribe_worker_thread,
+					SUBSCRIBE_THREAD_PRIORITY);
+	if (ret) {
+		dev_err(top_dev->base_dev.dev,
+			"Failed to set LWIS top subscription kthread priority (%d)", ret);
+		lwis_base_unprobe(&top_dev->base_dev);
 		goto error_probe;
 	}
 
@@ -521,15 +536,7 @@ static int lwis_top_device_probe(struct platform_device *plat_dev)
 		goto error_probe;
 	}
 
-	ret = lwis_set_kthread_priority(&top_dev->base_dev,
-					top_dev->base_dev.subscribe_worker_thread,
-					LWIS_SUBSCRIBER_THREAD_PRIORITY);
-	if (ret) {
-		dev_err(top_dev->base_dev.dev,
-			"Failed to set LWIS top subscriber kthread priority (%d)", ret);
-		lwis_base_unprobe(&top_dev->base_dev);
-		goto error_probe;
-	}
+	dev_info(top_dev->base_dev.dev, "Top Device Probe: Success\n");
 
 	return 0;
 

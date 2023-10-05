@@ -3,6 +3,7 @@ lwis-objs += lwis_device_dpm.o
 lwis-objs += lwis_device_i2c.o
 lwis-objs += lwis_device_ioreg.o
 lwis-objs += lwis_device_slc.o
+lwis-objs += lwis_device_test.o
 lwis-objs += lwis_device_top.o
 lwis-objs += lwis_clock.o
 lwis-objs += lwis_gpio.o
@@ -22,6 +23,7 @@ lwis-objs += lwis_debug.o
 lwis-objs += lwis_io_entry.o
 lwis-objs += lwis_allocator.o
 lwis-objs += lwis_version.o
+lwis-objs += lwis_fence.o
 
 # Anchorage specific files
 ifeq ($(CONFIG_SOC_GS101), y)
@@ -42,4 +44,4 @@ endif
 
 obj-$(CONFIG_LWIS) += lwis.o
 
-ccflags-y = -I$(abspath $(KERNEL_SRC)/$(M)) -I$(abspath $(KBUILD_SRC)/drivers/soc/google)
+ccflags-y += -I$(abspath $(KERNEL_SRC)/$(M)) -I$(abspath $(KBUILD_SRC)/drivers/soc/google)

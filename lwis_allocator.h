@@ -34,6 +34,7 @@ struct lwis_allocator_block_pool {
 
 struct lwis_allocator_block_mgr {
 	spinlock_t lock;
+	struct lwis_allocator_block_pool pool_4k;
 	struct lwis_allocator_block_pool pool_8k;
 	struct lwis_allocator_block_pool pool_16k;
 	struct lwis_allocator_block_pool pool_32k;
@@ -61,7 +62,7 @@ void lwis_allocator_release(struct lwis_device *lwis_dev);
 /*
  *  lwis_allocator_allocate: Allocate a block from the recycling memory allocator
  */
-void *lwis_allocator_allocate(struct lwis_device *lwis_dev, size_t size);
+void *lwis_allocator_allocate(struct lwis_device *lwis_dev, size_t size, gfp_t gfp_flags);
 
 /*
  *  lwis_allocator_free: Free a block to the recycling memory allocator

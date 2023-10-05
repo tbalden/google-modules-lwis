@@ -24,6 +24,7 @@
 int lwis_platform_probe(struct lwis_device *lwis_dev)
 {
 	struct lwis_platform *platform;
+	int i;
 
 	if (!lwis_dev) {
 		return -ENODEV;
@@ -38,16 +39,19 @@ int lwis_platform_probe(struct lwis_device *lwis_dev)
 	/* Enable runtime power management for the platform device */
 	pm_runtime_enable(&lwis_dev->plat_dev->dev);
 
-	lwis_dev->bts_index = BTS_UNSUPPORTED;
 	/* Only IOREG devices will access DMA resources */
 	if (lwis_dev->type != DEVICE_TYPE_IOREG) {
 		return 0;
 	}
+
 	/* Register to bts */
-	lwis_dev->bts_index = bts_get_bwindex(lwis_dev->name);
-	if (lwis_dev->bts_index < 0) {
-		dev_err(lwis_dev->dev, "Failed to register to BTS, ret: %d\n", lwis_dev->bts_index);
-		lwis_dev->bts_index = BTS_UNSUPPORTED;
+	for (i = 0; i < lwis_dev->bts_block_num; i++) {
+		lwis_dev->bts_indexes[i] = bts_get_bwindex(lwis_dev->bts_block_names[i]);
+		if (lwis_dev->bts_indexes[i] < 0) {
+			dev_err(lwis_dev->dev, "Failed to register to BTS, ret: %d\n",
+				lwis_dev->bts_indexes[i]);
+			lwis_dev->bts_indexes[i] = BTS_UNSUPPORTED;
+		}
 	}
 
 	return 0;
@@ -77,7 +81,9 @@ static int lwis_iommu_fault_handler(struct iommu_fault *fault, void *param)
 	pr_err("\n");
 	lwis_debug_print_transaction_info(lwis_dev);
 	pr_err("\n");
-	lwis_debug_print_event_states_info(lwis_dev);
+	lwis_debug_print_register_io_history(lwis_dev);
+	pr_err("\n");
+	lwis_debug_print_event_states_info(lwis_dev, /*lwis_event_dump_cnt=*/-1);
 	pr_err("\n");
 	lwis_debug_print_buffer_info(lwis_dev);
 	pr_err("\n");
@@ -93,6 +99,18 @@ static int lwis_iommu_fault_handler(struct iommu_fault *fault, void *param)
 #else
 	return -EAGAIN;
 #endif /* ENABLE_PAGE_FAULT_PANIC */
+}
+
+static bool lwis_device_support_bts(struct lwis_device *lwis_dev)
+{
+	int i;
+
+	for (i = 0; i < lwis_dev->bts_block_num; i++) {
+		if (lwis_dev->bts_indexes[i] != BTS_UNSUPPORTED) {
+			return true;
+		}
+	}
+	return false;
 }
 
 int lwis_platform_device_enable(struct lwis_device *lwis_dev)
@@ -131,17 +149,6 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 		}
 	}
 
-	/*
-	 * PM_QOS_CPU_ONLINE_MIN is not defined in 5.4 branch, will need to
-	 * revisit and see if a replacement is needed.
-	 */
-#if 0
-	/* Set hardcoded DVFS levels */
-	if (!exynos_pm_qos_request_active(&platform->pm_qos_hpg)) {
-		exynos_pm_qos_add_request(&platform->pm_qos_hpg,
-					  PM_QOS_CPU_ONLINE_MIN, hpg_qos);
-	}
-#endif
 	if (lwis_dev->clock_family != CLOCK_FAMILY_INVALID &&
 	    lwis_dev->clock_family < NUM_CLOCK_FAMILY) {
 		ret = lwis_platform_update_qos(lwis_dev, core_clock_qos, lwis_dev->clock_family);
@@ -160,7 +167,7 @@ int lwis_platform_device_enable(struct lwis_device *lwis_dev)
 		}
 	}
 
-	if (lwis_dev->bts_index != BTS_UNSUPPORTED && lwis_dev->bts_scenario_name) {
+	if (lwis_device_support_bts(lwis_dev) && lwis_dev->bts_scenario_name) {
 		lwis_dev->bts_scenario = bts_get_scenindex(lwis_dev->bts_scenario_name);
 		if (!lwis_dev->bts_scenario) {
 			dev_err(lwis_dev->dev, "Failed to get default camera BTS scenario.\n");
@@ -185,7 +192,7 @@ int lwis_platform_device_disable(struct lwis_device *lwis_dev)
 		return -ENODEV;
 	}
 
-	if (lwis_dev->bts_index != BTS_UNSUPPORTED && lwis_dev->bts_scenario_name) {
+	if (lwis_device_support_bts(lwis_dev) && lwis_dev->bts_scenario_name) {
 		bts_del_scenario(lwis_dev->bts_scenario);
 	}
 
@@ -204,8 +211,7 @@ int lwis_platform_device_disable(struct lwis_device *lwis_dev)
 	return pm_runtime_put_sync(&lwis_dev->plat_dev->dev);
 }
 
-int lwis_platform_update_qos(struct lwis_device *lwis_dev, int value,
-			     int32_t clock_family)
+int lwis_platform_update_qos(struct lwis_device *lwis_dev, int value, int32_t clock_family)
 {
 	struct lwis_platform *platform;
 	struct exynos_pm_qos_request *qos_req;
@@ -279,15 +285,6 @@ int lwis_platform_remove_qos(struct lwis_device *lwis_dev)
 		exynos_pm_qos_remove_request(&platform->pm_qos_mem);
 	}
 
-	/*
-	 * pm_qos_hpg is not being used, see comments above regarding
-	 * PM_QOS_CPU_ONLINE_MIN
-	 */
-#if 0
-	if (exynos_pm_qos_request_active(&platform->pm_qos_hpg)) {
-		exynos_pm_qos_remove_request(&platform->pm_qos_hpg);
-	}
-#endif
 	if (exynos_pm_qos_request_active(&platform->pm_qos_int_cam)) {
 		exynos_pm_qos_remove_request(&platform->pm_qos_int_cam);
 	}
@@ -300,30 +297,38 @@ int lwis_platform_remove_qos(struct lwis_device *lwis_dev)
 	return 0;
 }
 
-int lwis_platform_update_bts(struct lwis_device *lwis_dev, unsigned int bw_kb_peak,
+int lwis_platform_update_bts(struct lwis_device *lwis_dev, int block, unsigned int bw_kb_peak,
 			     unsigned int bw_kb_read, unsigned int bw_kb_write,
 			     unsigned int bw_kb_rt)
 {
-	int ret = 0;
+	int ret = 0, bts_index = lwis_dev->bts_indexes[block];
+	const char *block_name = lwis_dev->bts_block_names[block];
 	struct bts_bw bts_request;
 
-	if (lwis_dev->bts_index == BTS_UNSUPPORTED) {
-		dev_info(lwis_dev->dev, "%s doesn't support bts\n", lwis_dev->name);
-		return ret;
+	if (block >= lwis_dev->bts_block_num) {
+		dev_err(lwis_dev->dev, "Invalid block index %d, %s only has %d bts blocks\n", block,
+			lwis_dev->name, lwis_dev->bts_block_num);
+		return -EINVAL;
+	}
+
+	if (bts_index == BTS_UNSUPPORTED) {
+		dev_err(lwis_dev->dev, "%s block %s doesn't support bts\n", lwis_dev->name,
+			block_name);
+		return -EINVAL;
 	}
 
 	bts_request.peak = bw_kb_peak;
 	bts_request.read = bw_kb_read;
 	bts_request.write = bw_kb_write;
 	bts_request.rt = bw_kb_rt;
-	ret = bts_update_bw(lwis_dev->bts_index, bts_request);
+	ret = bts_update_bw(bts_index, bts_request);
 	if (ret < 0) {
 		dev_err(lwis_dev->dev, "Failed to update bandwidth to bts, ret: %d\n", ret);
 	} else {
 		dev_info(
 			lwis_dev->dev,
-			"Updated bandwidth to bts for device %s: peak: %u, read: %u, write: %u, rt: %u\n",
-			lwis_dev->name, bw_kb_peak, bw_kb_read, bw_kb_write, bw_kb_rt);
+			"Updated bandwidth to bts for device %s block %s: peak: %u, read: %u, write: %u, rt: %u\n",
+			lwis_dev->name, block_name, bw_kb_peak, bw_kb_read, bw_kb_write, bw_kb_rt);
 	}
 	return ret;
 }
