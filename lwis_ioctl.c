@@ -268,14 +268,6 @@ static int construct_io_entry(struct lwis_client *client, struct lwis_io_entry *
 		dev_err(lwis_dev->dev, "Failed to prepare io entries due to integer overflow\n");
 		return -EOVERFLOW;
 	}
-#ifdef CONFIG_UCI
-    if (strstr(lwis_dev->name,"flash")) {
-        int i = 0;
-        for (i=0; i<num_io_entries;i++) {
-            pr_info("%s lwis flash ioctl_reg_io: entry %d, type: %u %s \n",__func__,i,k_entries[i].type, (k_entries[i].type==LWIS_IO_ENTRY_WRITE?"WRITE":(k_entries[i].type==LWIS_IO_ENTRY_WRITE_BATCH?"WRITE_BATCH":(k_entries[i].type==LWIS_IO_ENTRY_POLL?"POLL":"UNKOWN"))));
-        }
-    }
-#endif
 	k_entries = lwis_allocator_allocate(lwis_dev, entry_size, GFP_KERNEL);
 	if (!k_entries) {
 		dev_err(lwis_dev->dev, "Failed to allocate io entries\n");
@@ -287,6 +279,15 @@ static int construct_io_entry(struct lwis_client *client, struct lwis_io_entry *
 		dev_err(lwis_dev->dev, "Failed to copy io entries from user\n");
 		goto error_free_entries;
 	}
+
+#ifdef CONFIG_UCI
+    if (strstr(lwis_dev->name,"flash")) {
+        int i = 0;
+        for (i=0; i<num_io_entries;i++) {
+            pr_info("%s lwis flash ioctl_reg_io: entry %d, type: %u %s \n",__func__,i,k_entries[i].type, (k_entries[i].type==LWIS_IO_ENTRY_WRITE?"WRITE":(k_entries[i].type==LWIS_IO_ENTRY_WRITE_BATCH?"WRITE_BATCH":(k_entries[i].type==LWIS_IO_ENTRY_POLL?"POLL":"UNKOWN"))));
+        }
+    }
+#endif
 
 	/*
 	 * For batch writes, need to allocate kernel buffers to deep copy the
@@ -354,8 +355,6 @@ static int cmd_echo(struct lwis_device *lwis_dev, struct lwis_cmd_pkt *header,
 {
 	struct lwis_cmd_echo echo_msg;
 	char *buffer = NULL;
-
-
 
 	if (copy_from_user((void *)&echo_msg, (void __user *)u_msg, sizeof(echo_msg))) {
 		dev_err(lwis_dev->dev, "Failed to copy %zu bytes from user\n", sizeof(echo_msg));
@@ -460,6 +459,117 @@ static int cmd_get_device_info(struct lwis_device *lwis_dev, struct lwis_cmd_pkt
 	k_info.header.ret_code = 0;
 	return copy_pkt_to_user(lwis_dev, u_msg, (void *)&k_info, sizeof(k_info));
 }
+
+#ifdef CONFIG_UCI
+static int ioctl_device_enable(struct lwis_client *lwis_client)
+{
+	int ret = 0;
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+
+	if (lwis_client->is_enabled) {
+		return 0;
+	}
+
+	mutex_lock(&lwis_dev->client_lock);
+	if (lwis_dev->enabled > 0 && lwis_dev->enabled < INT_MAX) {
+		lwis_dev->enabled++;
+		lwis_client->is_enabled = true;
+		ret = 0;
+		goto exit_locked;
+	} else if (lwis_dev->enabled == INT_MAX) {
+		dev_err(lwis_dev->dev, "Enable counter overflow\n");
+		ret = -EINVAL;
+		goto exit_locked;
+	}
+
+	/* Clear event queues to make sure there is no stale event from
+	 * previous session */
+	lwis_client_event_queue_clear(lwis_client);
+	lwis_client_error_event_queue_clear(lwis_client);
+
+	ret = lwis_dev_power_up_locked(lwis_dev);
+	if (ret < 0) {
+		dev_err(lwis_dev->dev, "Failed to power up device\n");
+		goto exit_locked;
+	}
+
+	lwis_dev->enabled++;
+	lwis_client->is_enabled = true;
+	lwis_dev->is_suspended = false;
+	dev_info(lwis_dev->dev, "Device enabled\n");
+#ifdef CONFIG_UCI
+    if (strstr(lwis_dev->name,"kraken") || strstr(lwis_dev->name,"dokkaebi")) {
+        ntf_camera_started();
+    }
+#endif
+exit_locked:
+	mutex_unlock(&lwis_dev->client_lock);
+	return ret;
+}
+
+static int ioctl_device_disable(struct lwis_client *lwis_client)
+{
+	int ret = 0;
+	struct lwis_device *lwis_dev = lwis_client->lwis_dev;
+
+	if (!lwis_client->is_enabled) {
+		return ret;
+	}
+
+	mutex_lock(&lwis_dev->client_lock);
+	/* Clear event states for this client */
+	lwis_client_event_states_clear(lwis_client);
+	mutex_unlock(&lwis_dev->client_lock);
+
+	/* Flush all periodic io to complete */
+	ret = lwis_periodic_io_client_flush(lwis_client);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Failed to wait for in-process periodic io to complete\n");
+	}
+
+	/* Flush all pending transactions */
+	ret = lwis_transaction_client_flush(lwis_client);
+	if (ret) {
+		dev_err(lwis_dev->dev, "Failed to flush pending transactions\n");
+	}
+
+	/* Run cleanup transactions. */
+	lwis_transaction_client_cleanup(lwis_client);
+
+	mutex_lock(&lwis_dev->client_lock);
+	if (lwis_dev->enabled > 1) {
+		lwis_dev->enabled--;
+		lwis_client->is_enabled = false;
+		ret = 0;
+		goto exit_locked;
+	} else if (lwis_dev->enabled <= 0) {
+		dev_err(lwis_dev->dev, "Disabling a device that is already disabled\n");
+		ret = -EINVAL;
+		goto exit_locked;
+	}
+
+	ret = lwis_dev_power_down_locked(lwis_dev);
+	if (ret < 0) {
+		dev_err(lwis_dev->dev, "Failed to power down device\n");
+		goto exit_locked;
+	}
+	lwis_device_event_states_clear_locked(lwis_dev);
+
+	lwis_dev->enabled--;
+	lwis_client->is_enabled = false;
+	lwis_dev->is_suspended = false;
+	dev_info(lwis_dev->dev, "Device disabled\n");
+#ifdef CONFIG_UCI
+    if (strstr(lwis_dev->name,"kraken") || strstr(lwis_dev->name,"dokkaebi")) {
+        ntf_camera_stopped();
+    }
+#endif
+exit_locked:
+	mutex_unlock(&lwis_dev->client_lock);
+	return ret;
+}
+
+#endif
 
 static int cmd_device_enable(struct lwis_client *lwis_client, struct lwis_cmd_pkt *header,
 			     struct lwis_cmd_pkt __user *u_msg)
@@ -1974,17 +2084,17 @@ int lwis_ioctl_handler(struct lwis_client *lwis_client, unsigned int type, unsig
         lwis_client_flash = lwis_client;
         lwis_dev_flash = lwis_dev;
 	switch (type) {
-	case LWIS_REG_IO:
-        pr_info("%s cleanslate flash IOCTL: LWIS_REG_IO",__func__);
+	case LWIS_CMD_ID_REG_IO:
+        pr_info("%s cleanslate flash IOCTL: LWIS_CMD_ID_REG_IO",__func__);
 		break;
-	case LWIS_ECHO:
-        pr_info("%s cleanslate flash IOCTL: LWIS_ECHO",__func__);
+	case LWIS_CMD_ID_ECHO:
+        pr_info("%s cleanslate flash IOCTL: LWIS_CMD_ID_ECHO",__func__);
 		break;
-	case LWIS_EVENT_CONTROL_SET:
-        pr_info("%s cleanslate flash IOCTL: LWIS_EVENT_CONTROL_SET",__func__);
+	case LWIS_CMD_ID_EVENT_CONTROL_SET:
+        pr_info("%s cleanslate flash IOCTL: LWIS_CMD_ID_EVENT_CONTROL_SET",__func__);
 		break;
-	case LWIS_TRANSACTION_SUBMIT:
-        pr_info("%s cleanslate flash IOCTL: LWIS_TRANSACTION_SUBMIT",__func__);
+	case LWIS_CMD_ID_TRANSACTION_SUBMIT:
+        pr_info("%s cleanslate flash IOCTL: LWIS_CMD_ID_TRANSACTION_SUBMIT",__func__);
 		break;
 	default:
         pr_info("%s cleanslate flash IOCTL: Not matched",__func__);
