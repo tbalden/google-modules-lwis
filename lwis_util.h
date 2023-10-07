@@ -53,13 +53,19 @@ int lwis_device_single_register_read(struct lwis_device *lwis_dev, int bid, uint
 const char *lwis_device_type_to_string(int32_t type);
 
 /*
+ * trigger_condition_node_operator_to_string: Converts the trigger condition
+ * node type into a human-readable string. Useful for debug logging.
+ */
+const char *trigger_condition_node_operator_to_string(int32_t type);
+
+/*
  * lwis_get_time: Returns time since boot, this uses CLOCK_BOOTTIME which
  * does not stop during system suspend.
  *
  * This wrapper is created to encourage consistent usage of clock source
  * throughout LWIS implementations.
  */
-static inline ktime_t lwis_get_time()
+static inline ktime_t lwis_get_time(void)
 {
 	return ktime_get_boottime();
 }
@@ -72,7 +78,6 @@ int lwis_create_kthread_workers(struct lwis_device *lwis_dev);
 /*
  * lwis_set_kthread_priority: Set kthread priority.
  */
-int lwis_set_kthread_priority(struct lwis_device *lwis_dev, struct task_struct *task,
-			      u32 priority);
+int lwis_set_kthread_priority(struct lwis_device *lwis_dev, struct task_struct *task, u32 priority);
 
 #endif // LWIS_UTIL_H_

@@ -81,12 +81,12 @@ int lwis_regulator_get(struct lwis_regulator_list *list, char *name, int voltage
 
 	/* Make sure regulator exists */
 	reg = devm_regulator_get(dev, name);
-	if (IS_ERR(reg)) {
+	if (IS_ERR_OR_NULL(reg)) {
 		return PTR_ERR(reg);
 	}
 
 	list->reg[index].reg = reg;
-	strlcpy(list->reg[index].name, name, LWIS_MAX_NAME_STRING_LEN);
+	strscpy(list->reg[index].name, name, LWIS_MAX_NAME_STRING_LEN);
 	list->reg[index].voltage = voltage;
 
 	return index;
