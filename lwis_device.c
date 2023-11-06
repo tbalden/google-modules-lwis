@@ -29,6 +29,7 @@
 #include "lwis_device_dpm.h"
 #include "lwis_device_slc.h"
 #include "lwis_device_test.h"
+#include "lwis_device_top.h"
 #include "lwis_device_spi.h"
 #include "lwis_dt.h"
 #include "lwis_event.h"
@@ -122,6 +123,7 @@ static int lwis_open(struct inode *node, struct file *fp)
 	spin_lock_init(&lwis_client->periodic_io_lock);
 	spin_lock_init(&lwis_client->event_lock);
 	spin_lock_init(&lwis_client->flush_lock);
+	spin_lock_init(&lwis_client->buffer_lock);
 
 	/* Empty hash table for client event states */
 	hash_init(lwis_client->event_states);
@@ -1420,7 +1422,6 @@ bool lwis_i2c_dev_is_in_use(struct lwis_device *lwis_dev)
 	}
 
 	i2c_dev = container_of(lwis_dev, struct lwis_i2c_device, base_dev);
-	mutex_lock(&core.lock);
 	list_for_each_entry (lwis_dev_it, &core.lwis_dev_list, dev_list) {
 		if (lwis_dev_it->type == DEVICE_TYPE_I2C) {
 			struct lwis_i2c_device *i2c_dev_it =
@@ -1428,12 +1429,10 @@ bool lwis_i2c_dev_is_in_use(struct lwis_device *lwis_dev)
 			/* Look up if i2c bus are still in use by other device*/
 			if ((i2c_dev_it->state_pinctrl == i2c_dev->state_pinctrl) &&
 			    (i2c_dev_it != i2c_dev) && lwis_dev_it->enabled) {
-				mutex_unlock(&core.lock);
 				return true;
 			}
 		}
 	}
-	mutex_unlock(&core.lock);
 	return false;
 }
 
@@ -1798,9 +1797,9 @@ static int __init lwis_base_device_init(void)
 	return 0;
 
 spi_failure:
-	lwis_spi_device_deinit();
-test_failure:
 	lwis_test_device_deinit();
+test_failure:
+	lwis_dpm_device_deinit();
 dpm_failure:
 	lwis_slc_device_deinit();
 slc_failure:
@@ -1885,7 +1884,9 @@ static void __exit lwis_driver_exit(void)
 		}
 		/* Release event subscription components */
 		if (lwis_dev->type == DEVICE_TYPE_TOP) {
-			lwis_dev->top_dev->subscribe_ops.release(lwis_dev);
+			struct lwis_top_device *top_dev;
+			top_dev = container_of(lwis_dev, struct lwis_top_device, base_dev);
+			top_dev->subscribe_ops.release(lwis_dev);
 		}
 
 		/* Destroy device */
