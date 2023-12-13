@@ -56,13 +56,6 @@ static struct lwis_device_subclass_operations i2c_vops = {
 	.close = NULL,
 };
 
-static struct lwis_event_subscribe_operations i2c_subscribe_ops = {
-	.subscribe_event = NULL,
-	.unsubscribe_event = NULL,
-	.notify_event_subscriber = NULL,
-	.release = NULL,
-};
-
 static int lwis_i2c_device_enable(struct lwis_device *lwis_dev)
 {
 	int ret;
@@ -111,19 +104,19 @@ static int lwis_i2c_device_disable(struct lwis_device *lwis_dev)
 		return ret;
 	}
 #endif
-
+	mutex_lock(i2c_dev->group_i2c_lock);
 	if (!lwis_i2c_dev_is_in_use(lwis_dev)) {
 		/* Disable the I2C bus */
-		mutex_lock(i2c_dev->group_i2c_lock);
 		LWIS_ATRACE_FUNC_BEGIN(lwis_dev, "lwis_i2c_device_disable");
 		ret = lwis_i2c_set_state(i2c_dev, I2C_OFF_STRING);
-		mutex_unlock(i2c_dev->group_i2c_lock);
 		LWIS_ATRACE_FUNC_END(lwis_dev, "lwis_i2c_device_disable");
 		if (ret) {
 			dev_err(lwis_dev->dev, "Error disabling i2c bus (%d)\n", ret);
+			mutex_unlock(i2c_dev->group_i2c_lock);
 			return ret;
 		}
 	}
+	mutex_unlock(i2c_dev->group_i2c_lock);
 
 	return 0;
 }
@@ -248,7 +241,6 @@ static int lwis_i2c_device_probe(struct platform_device *plat_dev)
 
 	i2c_dev->base_dev.type = DEVICE_TYPE_I2C;
 	i2c_dev->base_dev.vops = i2c_vops;
-	i2c_dev->base_dev.subscribe_ops = i2c_subscribe_ops;
 	i2c_dev->base_dev.plat_dev = plat_dev;
 	i2c_dev->base_dev.k_dev = &plat_dev->dev;
 
